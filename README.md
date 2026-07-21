@@ -1,6 +1,6 @@
 # CanyonBench
 
-CanyonBench is a reproducible benchmark for measuring hallucination and spatial grounding in vision-language models on high-altitude aerial imagery. This repository contains the code. The separately versioned [CanyonBench data repository](https://github.com/zafirshamsi/canyonbench-data) contains release schemas, annotation templates, metadata, and—after curation—the publishable dataset.
+CanyonBench is a reproducible benchmark for measuring hallucination and spatial grounding in vision-language models on high-altitude aerial imagery. This repository contains the code. The separately versioned [CanyonBench data repository](https://github.com/ZShamsi987/canyonbench-data) contains release schemas, annotation templates, metadata, and—after curation—the publishable dataset.
 
 The implementation follows four non-negotiable design choices from the project specification:
 

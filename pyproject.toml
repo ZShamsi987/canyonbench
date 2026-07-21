@@ -50,9 +50,9 @@ all = [
 canyonbench = "canyonbench.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/zafirshamsi/canyonbench"
-Repository = "https://github.com/zafirshamsi/canyonbench"
-Issues = "https://github.com/zafirshamsi/canyonbench/issues"
+Homepage = "https://github.com/ZShamsi987/canyonbench"
+Repository = "https://github.com/ZShamsi987/canyonbench"
+Issues = "https://github.com/ZShamsi987/canyonbench/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/canyonbench"]
