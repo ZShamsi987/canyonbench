@@ -1,0 +1,30 @@
+release_dir: ../work/release
+output_dir: ../results/example
+probes_file: probes.yaml
+split: test
+seed: 2026
+image_limit: 10
+probes:
+  - presence
+  - vegetation
+  - grounding
+  - false_premise
+models:
+  - id: example/model
+    adapter:
+      kind: openai_compatible
+      base_url: https://openrouter.ai/api/v1
+      api_key_env: OPENROUTER_API_KEY
+      timeout_s: 120
+      max_retries: 3
+    max_tokens: 512
+    temperature: 0
+    image_max_side: 1536
+    supports_json_schema: true
+    supports_pointing: false
+budget:
+  max_requests: 400
+  max_cost_usd: 10.00
+  input_per_million_usd: 0.00
+  output_per_million_usd: 0.00
+

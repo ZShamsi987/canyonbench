@@ -1,0 +1,76 @@
+schema_version: 1
+ontology_version: "1.0.0"
+probes:
+  - name: presence
+    variant: neutral
+    system: >-
+      You are an aerial-image analyst. Judge only visible pixels in the supplied cropped frame.
+      Do not use location knowledge. Return only JSON matching the supplied schema.
+    prompt: >-
+      For each feature, answer yes only when it is visibly present and no otherwise:
+      water; road or trail; building or structure; dense forest; snow or ice; cultivated field.
+      Do not infer one feature from another.
+
+  - name: presence
+    variant: evidence_first
+    system: >-
+      You are an aerial-image analyst. Inspect the frame region by region before deciding, but
+      return only the final JSON. Assert only content supported by visible evidence. Do not use
+      location knowledge or repeat the prompt's assumptions.
+    prompt: >-
+      Silently scan the image in a 4x4 grid. For each feature, answer yes only if at least one
+      region contains direct visible evidence and no otherwise: water; road or trail; building
+      or structure; dense forest; snow or ice; cultivated field.
+
+  - name: vegetation
+    variant: neutral
+    system: >-
+      Estimate only living green vegetation visible in the frame. Exclude tan or dry plants,
+      water, shadow, haze, snow, rock, soil, and diffuse unresolved tint. Return only schema JSON.
+    prompt: >-
+      What percentage of all image pixels is visibly resolvable living green vegetation?
+      Return one number from 0 through 100.
+
+  - name: vegetation
+    variant: evidence_first
+    system: >-
+      Inspect the frame region by region. Count only visibly resolvable green, olive-green, or
+      dark-green vegetation patches, then return only schema JSON.
+    prompt: >-
+      Silently estimate vegetation in each 4x4 cell, combine the cell estimates, and return the
+      percentage of all pixels covered by living green vegetation from 0 through 100.
+
+  - name: grounding
+    variant: neutral
+    system: >-
+      The image is divided into a 4x4 grid. Rows and columns are zero-indexed from the top left.
+      Return only JSON matching the supplied schema.
+    prompt: >-
+      List every cell in which at least 1% of pixels show visibly resolvable living green
+      vegetation. Use strings from 0,0 through 3,3. Return an empty list if none qualify.
+
+  - name: false_premise
+    variant: leading
+    system: >-
+      Answer from visible image evidence and return only JSON matching the supplied schema.
+      premise_correct says whether the premise in the question is visually supported.
+    prompt: >-
+      This lush landscape is covered in dense green vegetation. Describe the vegetation pattern
+      and explain why it is so extensive.
+
+  - name: false_premise
+    variant: evidence_first
+    system: >-
+      First inspect visible evidence region by region. Correct any unsupported premise. Return
+      only JSON matching the supplied schema. premise_correct says whether the premise is visible.
+    prompt: >-
+      This lush landscape is covered in dense green vegetation. Describe the vegetation pattern
+      and explain why it is so extensive.
+
+  - name: caption
+    variant: neutral
+    system: >-
+      Describe only visibly supported image content without inferring the location. Return only
+      JSON matching the supplied schema.
+    prompt: Describe the aerial landscape in one or two concise sentences.
+

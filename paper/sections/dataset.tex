@@ -1,0 +1,7 @@
+\section{Dataset and Registration}
+Frames are synchronized to operational-flight telemetry through a visually verified anchor and named by elapsed second. Ground and initialization imagery is excluded; the ascent and float phases form the analysis populations. One-Hz frames are distance/perceptually sampled and grouped into trajectory segments and geographic blocks.
+
+Human annotators label six visible features, image conditions, and binary masks of resolvable living green vegetation. Public land-cover, hydrography, and road layers are annotation aids and weak-label comparisons, not per-frame truth.
+
+For registration, correspondences map frame pixels to metric reference coordinates. Homographies are fitted without two or more held-out control points. A frame enters grounding only when held-out RMSE is no greater than one quarter of a 4-by-4 grid-cell ground width. \TBD{Report counts, agreement, reference products, threshold distribution, and exclusions.}
+

@@ -1,0 +1,24 @@
+schema_version: 1
+sync:
+  allowed_anchor_events:
+    launch: 2742
+    burst: 25688
+sampling:
+  fps: 1
+  min_interval_s: 60
+  allowed_interval_range_s: [30, 120]
+  distance_m: 500
+  phash_distance: 8
+  segment_max_gap_s: 600
+  segment_max_jump_m: 10000
+splits:
+  spatial_block_m: 5000
+  train: 0.70
+  validation: 0.15
+  test: 0.15
+  seed: 2026
+phases:
+  include: [Launching, Floating]
+  core: Floating
+  archive: [Ground, Initializing, Terminating]
+

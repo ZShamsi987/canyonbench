@@ -1,0 +1,10 @@
+schema_version: 1
+minimum_points: 6
+target_points: 8
+holdout_points: 2
+transform: projective
+ransac_reprojection_threshold: 5.0
+reliability_threshold: quarter_grid_cell_ground_width
+grid_size: 4
+extreme_relief_flag_m: 1500
+

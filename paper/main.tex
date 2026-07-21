@@ -1,0 +1,30 @@
+\documentclass[10pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\newcommand{\TBD}[1]{\textcolor{red}{[TBD: #1]}}
+
+\title{CanyonBench: A Geospatially Registered Benchmark for Hallucination and Spatial Grounding of Vision-Language Models on High-Altitude Aerial Imagery}
+\author{Anonymous Authors}
+\date{}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+We introduce CanyonBench, a benchmark for measuring feature hallucination, green-visible-vegetation estimation, and spatial grounding in high-altitude aerial imagery. Ground truth is annotated on visible image content and spatial evaluation is restricted to frames with validated frame-to-map registration. \TBD{Insert frozen dataset counts and headline results.}
+\end{abstract}
+
+\input{sections/introduction}
+\input{sections/dataset}
+\input{sections/evaluation}
+\input{sections/results}
+\input{sections/discussion}
+
+\bibliographystyle{plain}
+\bibliography{references}
+\appendix
+\input{sections/appendix}
+\end{document}
+
