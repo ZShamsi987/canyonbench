@@ -7,7 +7,7 @@ import json
 import shlex
 import shutil
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import pandas as pd
 import typer
@@ -19,7 +19,7 @@ from canyonbench.groundtruth.release import build_release as assemble_release
 from canyonbench.io import write_json
 from canyonbench.pipeline.clips import inventory_clips
 from canyonbench.pipeline.extract import extract_clips
-from canyonbench.pipeline.flight_log import recover_operational_flight
+from canyonbench.pipeline.flight_log import audit_flight_segments, recover_operational_flight
 from canyonbench.pipeline.join import build_frames_table, discover_frames
 from canyonbench.pipeline.naming import materialize_frame_names, plan_frame_names
 from canyonbench.pipeline.sampling import (
@@ -63,20 +63,58 @@ def doctor() -> None:
 
 
 @app.command("flight-log")
-def flight_log(source: Path, output: Path) -> None:
+def flight_log(
+    source: Path,
+    output: Path,
+    audit_output: Annotated[
+        Path | None,
+        typer.Option("--audit-output", help="Optional CSV summary of every reset session."),
+    ] = None,
+) -> None:
     """Recover and canonicalize the operational flight segment."""
 
     frame = recover_operational_flight(source)
     output.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(output, index=False)
+    if audit_output is not None:
+        audit = audit_flight_segments(source)
+        audit_output.parent.mkdir(parents=True, exist_ok=True)
+        audit.to_csv(audit_output, index=False)
+        typer.echo(f"Wrote {len(audit)} reset-session audit rows to {audit_output}")
     typer.echo(f"Wrote {len(frame)} valid operational rows to {output}")
 
 
 @app.command()
-def clips(directory: Path, output: Path) -> None:
+def clips(
+    directory: Path,
+    output: Path,
+    order_by: Annotated[
+        Literal["auto", "filename", "relative_time"],
+        typer.Option(
+            "--order-by",
+            help="Clip order: auto, filename, or relative_time.",
+        ),
+    ] = "auto",
+    evict_source_cache: Annotated[
+        bool,
+        typer.Option(
+            "--evict-source-cache",
+            help="On macOS, return probed cloud files to placeholder state in batches.",
+        ),
+    ] = False,
+    workers: Annotated[
+        int,
+        typer.Option(min=1, max=8, help="Concurrent ffprobe workers."),
+    ] = 1,
+) -> None:
     """Inventory and deterministically order camera clips."""
 
-    frame = inventory_clips(directory)
+    frame = inventory_clips(
+        directory,
+        order_by=order_by,
+        evict_source_cache=evict_source_cache,
+        workers=workers,
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(output, index=False)
     typer.echo(f"Wrote {len(frame)} clip records to {output}")
@@ -108,34 +146,92 @@ def extract(
     execute: Annotated[
         bool, typer.Option("--execute", help="Run ffmpeg; default prints a plan.")
     ] = False,
+    resume: Annotated[
+        bool,
+        typer.Option("--resume", help="Skip clips with a verified completion marker."),
+    ] = False,
+    evict_source_cache: Annotated[
+        bool,
+        typer.Option(
+            "--evict-source-cache",
+            help="On macOS, release cloud source cache after each completed batch.",
+        ),
+    ] = False,
+    source_checksum_manifest: Annotated[
+        Path | None,
+        typer.Option(
+            "--source-checksum-manifest",
+            help="Optional JSON manifest of source clip SHA-256 values.",
+        ),
+    ] = None,
 ) -> None:
     """Plan or run one-Hz extraction with left-third removal."""
 
     commands = extract_clips(
-        pd.read_csv(clips_csv), load_anchor(sync_json), output_dir, execute=execute
+        pd.read_csv(clips_csv),
+        load_anchor(sync_json),
+        output_dir,
+        execute=execute,
+        resume=resume,
+        evict_source_cache=evict_source_cache,
+        checksum_manifest=source_checksum_manifest,
     )
     if execute:
-        typer.echo(f"Executed {len(commands)} extraction commands")
+        typer.echo(f"Extraction complete for {len(commands)} clip records")
     else:
         for command in commands:
             typer.echo(shlex.join(command))
 
 
 @app.command("name-frames")
-def name_frames(clips_csv: Path, sync_json: Path, extracted_dir: Path, output_dir: Path) -> None:
+def name_frames(
+    clips_csv: Path,
+    sync_json: Path,
+    extracted_dir: Path,
+    output_dir: Path,
+    mode: Annotated[
+        Literal["copy", "hardlink", "move"],
+        typer.Option(help="Materialize named frames by copy, hardlink, or move."),
+    ] = "copy",
+) -> None:
     """Materialize img_SSSSSS.jpg names keyed exactly to flight seconds."""
 
     plan = plan_frame_names(extracted_dir, pd.read_csv(clips_csv), load_anchor(sync_json))
-    materialize_frame_names(plan, output_dir)
+    materialize_frame_names(plan, output_dir, mode=mode)
     plan.to_csv(output_dir / "naming_manifest.csv", index=False)
     typer.echo(f"Named {len(plan)} frames")
 
 
 @app.command("build-frames")
-def build_frames(images_dir: Path, flight_csv: Path, output: Path) -> None:
+def build_frames(
+    images_dir: Path,
+    flight_csv: Path,
+    output: Path,
+    drop_unmatched: Annotated[
+        bool,
+        typer.Option(
+            "--drop-unmatched",
+            help="Exclude image seconds without valid telemetry instead of failing.",
+        ),
+    ] = False,
+    unmatched_output: Annotated[
+        Path | None,
+        typer.Option(
+            "--unmatched-output",
+            help="Optional CSV audit of image seconds absent from telemetry.",
+        ),
+    ] = None,
+) -> None:
     """Join aerial frames to telemetry and compute objective quality controls."""
 
-    frame = build_frames_table(discover_frames(images_dir), pd.read_csv(flight_csv))
+    images = discover_frames(images_dir)
+    flight = pd.read_csv(flight_csv)
+    unmatched = images.loc[~images["elapsed_s"].isin(flight["elapsed_s"])].copy()
+    if unmatched_output is not None:
+        unmatched_output.parent.mkdir(parents=True, exist_ok=True)
+        unmatched.to_csv(unmatched_output, index=False)
+        typer.echo(f"Wrote {len(unmatched)} unmatched-frame audit rows to {unmatched_output}")
+    frame = build_frames_table(images, flight, drop_unmatched=drop_unmatched)
     output.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(output, index=False)
     typer.echo(f"Wrote {len(frame)} joined aerial frames")

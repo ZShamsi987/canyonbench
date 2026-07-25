@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
 
@@ -52,11 +54,24 @@ def plan_frame_names(
     return frame.sort_values("elapsed_s").reset_index(drop=True)
 
 
-def materialize_frame_names(plan: pd.DataFrame, destination: str | Path) -> None:
+def materialize_frame_names(
+    plan: pd.DataFrame,
+    destination: str | Path,
+    *,
+    mode: Literal["copy", "hardlink", "move"] = "copy",
+) -> None:
     output = Path(destination)
     output.mkdir(parents=True, exist_ok=True)
+    if mode not in {"copy", "hardlink", "move"}:
+        raise DataValidationError(f"Unsupported frame materialization mode: {mode}")
     for row in plan.to_dict(orient="records"):
+        source = Path(str(row["source"]))
         target = output / str(row["image"])
         if target.exists():
             raise DataValidationError(f"Refusing to overwrite existing frame: {target}")
-        shutil.copy2(str(row["source"]), target)
+        if mode == "hardlink":
+            os.link(source, target)
+        elif mode == "move":
+            shutil.move(source, target)
+        else:
+            shutil.copy2(source, target)

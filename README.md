@@ -44,17 +44,21 @@ Frame extraction requires `ffmpeg` and `ffprobe`. Registration requires the `reg
 
 ```bash
 # 1. Recover the operational flight and inventory private clips.
-canyonbench flight-log data/private/WORLD10.txt work/flight.csv
-canyonbench clips data/private/video work/clips.csv
+canyonbench flight-log data/private/WORLD10.txt work/flight.csv \
+  --audit-output work/flight-segments.csv
+canyonbench clips data/private/video work/clips.csv --order-by auto
 
 # 2. Record a verified visual anchor, then extract second-indexed crops.
 canyonbench sync work/clips.csv work/sync.json --anchor-clip clip_07.avi \
   --anchor-offset-s 113.0 --flight-elapsed-s 2742
-canyonbench extract work/clips.csv work/sync.json work/frames_raw --execute
-canyonbench name-frames work/clips.csv work/sync.json work/frames_raw work/frames_named
+canyonbench extract work/clips.csv work/sync.json work/frames_raw \
+  --execute --resume
+canyonbench name-frames work/clips.csv work/sync.json work/frames_raw work/frames_named \
+  --mode hardlink
 
 # 3. Join telemetry, apply the aerial phase gate, and sample correlated frames.
-canyonbench build-frames work/frames_named work/flight.csv work/frames_candidates.csv
+canyonbench build-frames work/frames_named work/flight.csv work/frames_candidates.csv \
+  --drop-unmatched --unmatched-output work/unmatched-frames.csv
 canyonbench sample work/frames_candidates.csv work/frames_sampled.csv \
   --min-interval-s 60 --distance-m 500 --phash-distance 8
 
@@ -68,6 +72,10 @@ canyonbench score work/release results/example/predictions.jsonl results/example
 ```
 
 Commands default to safe, inspectable behavior: extraction prints commands unless `--execute` is passed; inference resumes by request key; API calls require an explicit budget and refuse to exceed it.
+
+For oversized Google Drive for desktop inputs on macOS, add `--evict-source-cache` to
+`clips` and `extract` so successfully read source ranges are returned to cloud-only state in
+bounded batches.
 
 ## Repository map
 

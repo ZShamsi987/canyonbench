@@ -1,8 +1,10 @@
 schema_version: 1
 sync:
   allowed_anchor_events:
-    launch: 2742
-    burst: 25688
+    release_first_sustained_ascent: 2721
+    launching_phase_transition: 2742
+    floating_phase_transition: 6806
+    terminating_phase_transition: 25688
 sampling:
   fps: 1
   min_interval_s: 60
@@ -21,4 +23,3 @@ phases:
   include: [Launching, Floating]
   core: Floating
   archive: [Ground, Initializing, Terminating]
-

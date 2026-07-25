@@ -40,6 +40,7 @@ def build_frames_table(
     *,
     phases: tuple[str, ...] = SCORED_PHASES,
     add_quality_controls: bool = True,
+    drop_unmatched: bool = False,
 ) -> pd.DataFrame:
     if images["elapsed_s"].duplicated().any():
         raise DataValidationError("Image table contains duplicate elapsed seconds")
@@ -47,10 +48,10 @@ def build_frames_table(
         raise DataValidationError("Flight table contains duplicate elapsed seconds")
     joined = images.merge(flight, on="elapsed_s", how="left", validate="one_to_one", indicator=True)
     unmatched = joined.loc[joined["_merge"] != "both", "image"].tolist()
-    if unmatched:
+    if unmatched and not drop_unmatched:
         preview = unmatched[:5]
         raise DataValidationError(f"Frames have no matching valid flight row: {preview}")
-    joined = joined.drop(columns="_merge")
+    joined = joined.loc[joined["_merge"] == "both"].drop(columns="_merge")
     joined = joined.loc[joined["phase"].isin(phases)].copy()
     if add_quality_controls:
         controls = pd.DataFrame(

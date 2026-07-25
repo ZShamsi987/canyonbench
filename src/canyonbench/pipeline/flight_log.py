@@ -14,15 +14,15 @@ CANONICAL_ALIASES: dict[str, tuple[str, ...]] = {
     "phase": ("flightphase", "phase"),
     "elapsed_s": ("elapsedtime", "elapsed", "second", "seconds"),
     "packets": ("packets", "packet"),
-    "time": ("worldviewtime", "time", "timestamp"),
-    "lat": ("latitude", "lat"),
-    "lon": ("longitude", "lon", "long"),
-    "alt_m": ("altitude", "altitudem", "altm"),
-    "speed": ("speed",),
-    "heading": ("heading",),
-    "velocity_down": ("velocitydown", "veldown"),
-    "pressure": ("pressure",),
-    "temperature": ("temperature", "temp"),
+    "time": ("worldviewtime", "wvtime", "time", "timestamp"),
+    "lat": ("worldviewlatitude", "wvlatitude", "latitude", "lat"),
+    "lon": ("worldviewlongitude", "wvlongitude", "longitude", "lon", "long"),
+    "alt_m": ("worldviewaltitude", "wvaltitude", "altitude", "altitudem", "altm"),
+    "speed": ("wvspeed", "speed"),
+    "heading": ("wvheading", "heading"),
+    "velocity_down": ("wvvelocitydown", "velocitydown", "veldown"),
+    "pressure": ("wvpressure", "pressure"),
+    "temperature": ("wvtemperature", "temperature", "temp"),
     "violet": ("violet",),
     "blue": ("blue",),
     "green": ("green",),
@@ -93,18 +93,66 @@ def _contains_phase_sequence(values: pd.Series) -> bool:
     return positions == sorted(positions)
 
 
-def recover_operational_flight(path: str | Path) -> pd.DataFrame:
-    """Return the final/longest contiguous full-flight segment in canonical columns."""
-
+def _load_segmented_flight(path: str | Path) -> pd.DataFrame:
     source = Path(path)
     if not source.is_file():
         raise DataValidationError(f"Flight log does not exist: {source}")
     frame = pd.read_csv(source, sep=None, engine="python", skiprows=_header_row(source))
     frame = frame.rename(columns=_canonical_columns(list(frame.columns)))
-
     frame["elapsed_s"] = pd.to_numeric(frame["elapsed_s"], errors="coerce")
     frame = frame.loc[frame["elapsed_s"].notna()].copy()  # drops embedded headers
     frame["segment_id"] = _segment_ids(frame["elapsed_s"])
+    frame["phase"] = frame["phase"].map(_canonical_phase)
+    return frame
+
+
+def audit_flight_segments(path: str | Path) -> pd.DataFrame:
+    """Summarize every reset-delimited session and identify the selected flight."""
+
+    frame = _load_segmented_flight(path)
+    candidate_ids = [
+        int(str(segment_id))
+        for segment_id, segment in frame.groupby("segment_id", sort=True)
+        if _contains_phase_sequence(segment["phase"])
+    ]
+    selected_id = (
+        max(
+            candidate_ids,
+            key=lambda segment_id: (
+                int(frame["segment_id"].eq(segment_id).sum()),
+                segment_id,
+            ),
+        )
+        if candidate_ids
+        else None
+    )
+    rows: list[dict[str, Any]] = []
+    for segment_id, segment in frame.groupby("segment_id", sort=True):
+        lat = pd.to_numeric(segment["lat"], errors="coerce")
+        lon = pd.to_numeric(segment["lon"], errors="coerce")
+        valid_gps = lat.notna() & lon.notna() & lat.ne(0) & lon.ne(0)
+        phases = set(segment["phase"])
+        rows.append(
+            {
+                "segment_id": int(str(segment_id)),
+                "row_count": len(segment),
+                "elapsed_start_s": int(segment["elapsed_s"].min()),
+                "elapsed_end_s": int(segment["elapsed_s"].max()),
+                "valid_gps_rows": int(valid_gps.sum()),
+                "has_launching": "Launching" in phases,
+                "has_floating": "Floating" in phases,
+                "has_terminating": "Terminating" in phases,
+                "has_operational_sequence": _contains_phase_sequence(segment["phase"]),
+                "selected_operational": int(str(segment_id)) == selected_id,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def recover_operational_flight(path: str | Path) -> pd.DataFrame:
+    """Return the final/longest contiguous full-flight segment in canonical columns."""
+
+    frame = _load_segmented_flight(path)
     candidates = [
         segment
         for _, segment in frame.groupby("segment_id", sort=True)
@@ -116,7 +164,6 @@ def recover_operational_flight(path: str | Path) -> pd.DataFrame:
         )
     operational = max(candidates, key=lambda value: (len(value), int(value["segment_id"].iloc[0])))
     operational = operational.drop(columns="segment_id").copy()
-    operational["phase"] = operational["phase"].map(_canonical_phase)
 
     numeric_columns = [name for name in operational.columns if name not in {"phase", "time"}]
     for name in numeric_columns:

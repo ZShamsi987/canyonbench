@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from pathlib import Path
 
 import pandas as pd
@@ -8,7 +10,7 @@ from PIL import Image
 
 import canyonbench.pipeline.clips as clips_module
 from canyonbench.exceptions import DataValidationError, ExternalToolError
-from canyonbench.pipeline.clips import inventory_clips
+from canyonbench.pipeline.clips import _probe, inventory_clips
 from canyonbench.pipeline.extract import extract_clips, extraction_command
 from canyonbench.pipeline.join import (
     build_frames_table,
@@ -28,14 +30,40 @@ def test_clip_inventory_and_missing_tool(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr(
         clips_module,
         "_probe",
-        lambda path, _: {"duration_s": 10.0, "creation_time": None},
+        lambda path, ffprobe: {"duration_s": 10.0, "creation_time": None},
     )
     frame = inventory_clips(tmp_path)
     assert set(frame["clip"]) == {"clip2.avi", "clip10.avi"}
     assert frame.video_start_s.tolist() == [0, 10]
+    explicit = inventory_clips(tmp_path, order_by="filename", workers=2)
+    assert explicit["clip"].tolist() == ["clip2.avi", "clip10.avi"]
+    assert explicit.order_source.unique().tolist() == ["filename_relative_sequence"]
     monkeypatch.setattr(clips_module.shutil, "which", lambda _: None)
     with pytest.raises(ExternalToolError, match="ffprobe"):
         inventory_clips(tmp_path)
+
+
+def test_probe_uses_last_decodable_frame_in_preallocated_avi(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = {
+        "streams": [{"r_frame_rate": "30/1", "width": 1920, "height": 1080}],
+        "frames": [
+            {"best_effort_timestamp_time": "55.000000"},
+            {"best_effort_timestamp_time": "60.966667"},
+        ],
+        "format": {"duration": "60.000000", "tags": {}},
+    }
+    completed = subprocess.CompletedProcess([], 0, stdout=json.dumps(payload), stderr="")
+    monkeypatch.setattr(
+        "canyonbench.pipeline.clips.subprocess.run", lambda *args, **kwargs: completed
+    )
+
+    metadata = _probe(tmp_path / "preallocated.avi", "/fake/ffprobe")
+
+    assert metadata["declared_duration_s"] == 60
+    assert metadata["duration_s"] == pytest.approx(61, abs=1e-6)
+    assert metadata["last_frame_pts_s"] == pytest.approx(60.966667)
 
 
 def test_extract_naming_join_and_quality(tmp_path: Path) -> None:
@@ -82,6 +110,58 @@ def test_extract_naming_join_and_quality(tmp_path: Path) -> None:
     assert image_quality_controls(named / "img_006806.jpg")["width_px"] == 12
 
 
+def test_extract_resume_and_hardlink_materialization(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source.avi"
+    source.touch()
+    clips = pd.DataFrame(
+        [
+            {
+                "clip": source.name,
+                "path": str(source),
+                "duration_s": 2,
+                "clip_index": 0,
+                "video_start_s": 0,
+            }
+        ]
+    )
+    anchor = SyncAnchor(source.name, 0, 1, "test", 0, 1)
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], *, check: bool, timeout: int) -> None:
+        assert check
+        assert timeout == 900
+        calls.append(command)
+        Path(command[-1].replace("%010d", "0000000001")).write_bytes(b"frame")
+
+    monkeypatch.setattr("canyonbench.pipeline.extract.shutil.which", lambda _: "/fake/ffmpeg")
+    monkeypatch.setattr("canyonbench.pipeline.extract.subprocess.run", fake_run)
+    output = tmp_path / "extracted"
+    extract_clips(clips, anchor, output, execute=True, resume=True)
+    extract_clips(clips, anchor, output, execute=True, resume=True)
+    assert len(calls) == 1
+    checksum_manifest = tmp_path / "source-checksums.json"
+    extract_clips(
+        clips,
+        anchor,
+        output,
+        execute=True,
+        resume=True,
+        checksum_manifest=checksum_manifest,
+    )
+    assert len(calls) == 1
+    checksum_payload = json.loads(checksum_manifest.read_text(encoding="utf-8"))
+    assert checksum_payload["clips"][0]["sha256"] == (
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    )
+
+    plan = plan_frame_names(output, clips, anchor)
+    named = tmp_path / "named"
+    materialize_frame_names(plan, named, mode="hardlink")
+    assert (named / "img_000001.jpg").samefile(output / "clip_0000_0000000001.jpg")
+
+
 def test_sync_roundtrip_and_join_failures(tmp_path: Path) -> None:
     anchor = SyncAnchor("a.avi", 1, 2742, "launch", 1, 2741)
     path = tmp_path / "sync.json"
@@ -97,6 +177,13 @@ def test_sync_roundtrip_and_join_failures(tmp_path: Path) -> None:
     )
     with pytest.raises(DataValidationError, match="no matching"):
         build_frames_table(images, flight, add_quality_controls=False)
+    dropped = build_frames_table(
+        images,
+        flight,
+        add_quality_controls=False,
+        drop_unmatched=True,
+    )
+    assert dropped.empty
     assert (
         candidate_exclusion_reason(
             pd.Series({"cloud": "heavy", "clarity": "clear", "balloon": "none"})
