@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -38,9 +39,40 @@ def test_clip_inventory_and_missing_tool(tmp_path: Path, monkeypatch: pytest.Mon
     explicit = inventory_clips(tmp_path, order_by="filename", workers=2)
     assert explicit["clip"].tolist() == ["clip2.avi", "clip10.avi"]
     assert explicit.order_source.unique().tolist() == ["filename_relative_sequence"]
+    assert explicit.timeline_source.unique().tolist() == ["contiguous"]
     monkeypatch.setattr(clips_module.shutil, "which", lambda _: None)
     with pytest.raises(ExternalToolError, match="ffprobe"):
         inventory_clips(tmp_path)
+
+
+def test_clip_inventory_can_use_relative_clip_end_clock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = tmp_path / "clip1.avi"
+    second = tmp_path / "clip2.avi"
+    first.touch()
+    second.touch()
+    os.utime(first, (1_000, 1_000))
+    os.utime(second, (1_012, 1_012))
+    monkeypatch.setattr(clips_module.shutil, "which", lambda _: "/fake/ffprobe")
+    monkeypatch.setattr(
+        clips_module,
+        "_probe",
+        lambda path, ffprobe: {
+            "duration_s": 10.0 if path == first else 8.0,
+            "creation_time": None,
+        },
+    )
+
+    frame = inventory_clips(
+        tmp_path,
+        order_by="filename",
+        timeline_by="relative_mtime_end",
+    )
+
+    assert frame.video_start_s.tolist() == [0, 14]
+    assert frame.video_end_s.tolist() == [10, 22]
+    assert frame.timeline_source.unique().tolist() == ["relative_mtime_end"]
 
 
 def test_probe_uses_last_decodable_frame_in_preallocated_avi(
@@ -181,6 +213,44 @@ def test_extract_resume_and_hardlink_materialization(
     named = tmp_path / "named"
     materialize_frame_names(plan, named, mode="hardlink")
     assert (named / "img_000001.jpg").samefile(output / "clip_0000_0000000001.jpg")
+
+
+def test_extract_resume_invalidates_changed_timeline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source.avi"
+    source.touch()
+    clips = pd.DataFrame(
+        [
+            {
+                "clip": source.name,
+                "path": str(source),
+                "duration_s": 2,
+                "clip_index": 0,
+                "video_start_s": 0,
+            }
+        ]
+    )
+    anchor = SyncAnchor(source.name, 0, 1, "test", 0, 1)
+    calls = 0
+
+    def fake_run(command: list[str], *, check: bool, timeout: int) -> None:
+        nonlocal calls
+        calls += 1
+        Path(command[-1].replace("%010d", "0000000001")).write_bytes(b"frame")
+
+    monkeypatch.setattr("canyonbench.pipeline.extract.shutil.which", lambda _: "/fake/ffmpeg")
+    monkeypatch.setattr("canyonbench.pipeline.extract.subprocess.run", fake_run)
+    output = tmp_path / "extracted"
+    extract_clips(clips, anchor, output, execute=True, resume=True)
+    stale = output / "clip_0000_0000000999.jpg"
+    stale.write_bytes(b"stale")
+    clips.loc[0, "video_start_s"] = 2
+
+    extract_clips(clips, anchor, output, execute=True, resume=True)
+
+    assert calls == 2
+    assert not stale.exists()
 
 
 def test_sync_roundtrip_and_join_failures(tmp_path: Path) -> None:

@@ -11,6 +11,8 @@
 - Add bounded concurrent clip probing while preserving deterministic manifest order.
 - Add an explicit unmatched-telemetry exclusion mode with a per-frame audit CSV.
 - Add an explicit undecodable-clip exclusion mode with a separate audit CSV.
+- Preserve verified relative camera-clock gaps with an explicit clip-end mtime timeline policy.
+- Invalidate resumable extraction markers when the timeline or extraction contract changes.
 
 ## 0.1.0 - 2026-07-21
 

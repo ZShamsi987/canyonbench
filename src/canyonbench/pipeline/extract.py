@@ -13,6 +13,8 @@ from canyonbench.io import read_json, sha256_file, write_json
 from canyonbench.pipeline.cloud_cache import evict_cloud_files
 from canyonbench.pipeline.sync import SyncAnchor, clip_flight_start
 
+EXTRACTION_VERSION = 2
+
 
 def extraction_command(
     clip_row: pd.Series,
@@ -68,6 +70,7 @@ def extract_clips(
     try:
         for (_, row), command in zip(clips.iterrows(), commands, strict=True):
             clip_index = int(row["clip_index"])
+            flight_start_s = clip_flight_start(row, anchor)
             marker = destination / f".clip_{clip_index:04d}.complete.json"
             frame_glob = f"clip_{clip_index:04d}_*.jpg"
             record: object = None
@@ -80,8 +83,15 @@ def extract_clips(
                 actual_count = len(list(destination.glob(frame_glob)))
                 valid_complete_marker = (
                     isinstance(record, dict)
+                    and record.get("extraction_version") == EXTRACTION_VERSION
                     and record.get("clip") == str(row["clip"])
                     and record.get("frame_count") == actual_count
+                    and abs(
+                        float(record.get("duration_s", float("nan"))) - float(row["duration_s"])
+                    )
+                    < 1e-6
+                    and abs(float(record.get("flight_start_s", float("nan"))) - flight_start_s)
+                    < 1e-6
                     and actual_count > 0
                 )
                 checksum_present = (
@@ -100,6 +110,9 @@ def extract_clips(
                         )
                     continue
             if not valid_complete_marker:
+                for stale_frame in destination.glob(frame_glob):
+                    stale_frame.unlink()
+                marker.unlink(missing_ok=True)
                 command[0] = executable
                 command.insert(1, "-y")
                 try:
@@ -114,9 +127,11 @@ def extract_clips(
                 frame_count = int(record["frame_count"])
             source_sha256 = sha256_file(str(row["path"])) if checksum_manifest is not None else None
             marker_record: dict[str, object] = {
+                "extraction_version": EXTRACTION_VERSION,
                 "clip": str(row["clip"]),
                 "clip_index": clip_index,
                 "duration_s": float(row["duration_s"]),
+                "flight_start_s": flight_start_s,
                 "frame_count": frame_count,
             }
             if source_sha256 is not None:

@@ -95,6 +95,13 @@ def clips(
             help="Clip order: auto, filename, or relative_time.",
         ),
     ] = "auto",
+    timeline_by: Annotated[
+        Literal["contiguous", "relative_mtime_end"],
+        typer.Option(
+            "--timeline-by",
+            help="Video clock: concatenate clips or use relative mtime as each clip end.",
+        ),
+    ] = "contiguous",
     evict_source_cache: Annotated[
         bool,
         typer.Option(
@@ -126,6 +133,7 @@ def clips(
     frame = inventory_clips(
         directory,
         order_by=order_by,
+        timeline_by=timeline_by,
         evict_source_cache=evict_source_cache,
         workers=workers,
         exclude_undecodable=exclude_undecodable,

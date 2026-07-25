@@ -9,6 +9,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
 from functools import partial
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal
 
@@ -92,6 +93,7 @@ def inventory_clips(
     ffprobe: str = "ffprobe",
     *,
     order_by: Literal["auto", "filename", "relative_time"] = "auto",
+    timeline_by: Literal["contiguous", "relative_mtime_end"] = "contiguous",
     evict_source_cache: bool = False,
     eviction_batch_size: int = 10,
     workers: int = 1,
@@ -110,6 +112,8 @@ def inventory_clips(
         raise DataValidationError(f"Video directory does not exist: {root}")
     if order_by not in {"auto", "filename", "relative_time"}:
         raise DataValidationError(f"Unsupported clip ordering policy: {order_by}")
+    if timeline_by not in {"contiguous", "relative_mtime_end"}:
+        raise DataValidationError(f"Unsupported clip timeline policy: {timeline_by}")
     if eviction_batch_size < 1:
         raise DataValidationError("eviction_batch_size must be positive")
     if workers < 1:
@@ -179,14 +183,35 @@ def inventory_clips(
     else:
         rows.sort(key=lambda row: (row["mtime"], row["natural_order"]))
         order_source = "mtime_then_filename"
-    elapsed = 0.0
-    for index, row in enumerate(rows):
+    if not rows:
+        raise DataValidationError("No decodable video clips remain after exclusions")
+    if timeline_by == "relative_mtime_end":
+        # Some cameras preserve a continuously advancing relative clock in file
+        # modification times even when the configured calendar date is wrong.
+        # Treat mtime as the clip-end clock only when explicitly requested.
+        timeline_origin = rows[0]["mtime"] - rows[0]["duration_s"]
+        starts = [(row["mtime"] - row["duration_s"]) - timeline_origin for row in rows]
+        if any(current < previous for previous, current in pairwise(starts)):
+            raise DataValidationError(
+                "Relative mtime-derived clip starts are not monotonic in the selected order"
+            )
+    else:
+        starts = []
+        elapsed = 0.0
+        for row in rows:
+            starts.append(elapsed)
+            elapsed += row["duration_s"]
+    for index, (row, start) in enumerate(zip(rows, starts, strict=True)):
         row["clip_index"] = index
-        row["video_start_s"] = elapsed
-        row["video_end_s"] = elapsed + row["duration_s"]
+        row["video_start_s"] = start
+        row["video_end_s"] = (
+            row["mtime"] - timeline_origin
+            if timeline_by == "relative_mtime_end"
+            else start + row["duration_s"]
+        )
         row["order_source"] = order_source
+        row["timeline_source"] = timeline_by
         row.pop("natural_order")
-        elapsed = row["video_end_s"]
     frame = pd.DataFrame(rows)
     frame.attrs["excluded_clips"] = excluded_rows
     return frame
