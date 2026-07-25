@@ -112,9 +112,7 @@ def extract_clips(
             else:
                 assert isinstance(record, dict)
                 frame_count = int(record["frame_count"])
-            source_sha256 = (
-                sha256_file(str(row["path"])) if checksum_manifest is not None else None
-            )
+            source_sha256 = sha256_file(str(row["path"])) if checksum_manifest is not None else None
             marker_record: dict[str, object] = {
                 "clip": str(row["clip"]),
                 "clip_index": clip_index,
@@ -123,9 +121,7 @@ def extract_clips(
             }
             if source_sha256 is not None:
                 marker_record["source_sha256"] = source_sha256
-                checksum_records.append(
-                    {"clip": str(row["clip"]), "sha256": source_sha256}
-                )
+                checksum_records.append({"clip": str(row["clip"]), "sha256": source_sha256})
             write_json(
                 marker,
                 marker_record,
