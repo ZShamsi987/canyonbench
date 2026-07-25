@@ -32,7 +32,7 @@ def _probe(path: Path, ffprobe: str) -> dict[str, Any]:
         "-select_streams",
         "v:0",
         "-read_intervals",
-        "55%",
+        "59%",
         "-show_entries",
         (
             "format=duration:format_tags=creation_time:"
