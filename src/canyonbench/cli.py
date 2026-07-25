@@ -106,6 +106,20 @@ def clips(
         int,
         typer.Option(min=1, max=8, help="Concurrent ffprobe workers."),
     ] = 1,
+    exclude_undecodable: Annotated[
+        bool,
+        typer.Option(
+            "--exclude-undecodable",
+            help="Audit and exclude clips with no decodable video instead of failing.",
+        ),
+    ] = False,
+    excluded_output: Annotated[
+        Path | None,
+        typer.Option(
+            "--excluded-output",
+            help="Optional CSV audit of clips excluded as undecodable.",
+        ),
+    ] = None,
 ) -> None:
     """Inventory and deterministically order camera clips."""
 
@@ -114,10 +128,16 @@ def clips(
         order_by=order_by,
         evict_source_cache=evict_source_cache,
         workers=workers,
+        exclude_undecodable=exclude_undecodable,
     )
+    excluded = pd.DataFrame(frame.attrs.get("excluded_clips", []))
+    if excluded_output is not None:
+        excluded_output.parent.mkdir(parents=True, exist_ok=True)
+        excluded.to_csv(excluded_output, index=False)
+        typer.echo(f"Wrote {len(excluded)} excluded-clip audit rows to {excluded_output}")
     output.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(output, index=False)
-    typer.echo(f"Wrote {len(frame)} clip records to {output}")
+    typer.echo(f"Wrote {len(frame)} usable clip records to {output}")
 
 
 @app.command()

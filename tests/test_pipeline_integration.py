@@ -66,6 +66,27 @@ def test_probe_uses_last_decodable_frame_in_preallocated_avi(
     assert metadata["last_frame_pts_s"] == pytest.approx(60.966667)
 
 
+def test_inventory_can_audit_an_undecodable_clip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "clip1.avi").touch()
+    (tmp_path / "clip2.avi").touch()
+    monkeypatch.setattr(clips_module.shutil, "which", lambda _: "/fake/ffprobe")
+
+    def fake_probe(path: Path, ffprobe: str) -> dict[str, object]:
+        if path.name == "clip2.avi":
+            raise ExternalToolError("zero-filled")
+        return {"duration_s": 1.0, "creation_time": None}
+
+    monkeypatch.setattr(clips_module, "_probe", fake_probe)
+    with pytest.raises(ExternalToolError, match="zero-filled"):
+        inventory_clips(tmp_path)
+
+    frame = inventory_clips(tmp_path, exclude_undecodable=True)
+    assert frame["clip"].tolist() == ["clip1.avi"]
+    assert frame.attrs["excluded_clips"][0]["clip"] == "clip2.avi"
+
+
 def test_extract_naming_join_and_quality(tmp_path: Path) -> None:
     source = tmp_path / "source.avi"
     source.touch()

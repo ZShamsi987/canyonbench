@@ -10,6 +10,7 @@
 - Capture resumable per-clip source SHA-256 values during extraction without a second cloud download.
 - Add bounded concurrent clip probing while preserving deterministic manifest order.
 - Add an explicit unmatched-telemetry exclusion mode with a per-frame audit CSV.
+- Add an explicit undecodable-clip exclusion mode with a separate audit CSV.
 
 ## 0.1.0 - 2026-07-21
 

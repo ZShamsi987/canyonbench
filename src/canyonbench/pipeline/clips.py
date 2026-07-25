@@ -80,6 +80,13 @@ def _probe(path: Path, ffprobe: str) -> dict[str, Any]:
     }
 
 
+def _probe_result(path: Path, ffprobe: str) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        return _probe(path, ffprobe), None
+    except ExternalToolError as exc:
+        return None, str(exc)
+
+
 def inventory_clips(
     directory: str | Path,
     ffprobe: str = "ffprobe",
@@ -88,6 +95,7 @@ def inventory_clips(
     evict_source_cache: bool = False,
     eviction_batch_size: int = 10,
     workers: int = 1,
+    exclude_undecodable: bool = False,
 ) -> pd.DataFrame:
     """Probe clips and place them on one continuous relative video clock.
 
@@ -116,11 +124,26 @@ def inventory_clips(
     if not paths:
         raise DataValidationError(f"No supported video clips found in {root}")
     rows: list[dict[str, Any]] = []
+    excluded_rows: list[dict[str, str]] = []
     pending_evictions: list[Path] = []
     try:
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            metadata_values = executor.map(partial(_probe, ffprobe=executable), paths)
-            for path, metadata in zip(paths, metadata_values, strict=True):
+            results = executor.map(partial(_probe_result, ffprobe=executable), paths)
+            for path, (metadata, error) in zip(paths, results, strict=True):
+                if error is not None:
+                    if evict_source_cache:
+                        pending_evictions.append(path)
+                    if not exclude_undecodable:
+                        raise ExternalToolError(error)
+                    excluded_rows.append(
+                        {
+                            "clip": path.name,
+                            "path": str(path.resolve()),
+                            "reason": error,
+                        }
+                    )
+                    continue
+                assert metadata is not None
                 rows.append(
                     {
                         "clip": path.name,
@@ -164,4 +187,6 @@ def inventory_clips(
         row["order_source"] = order_source
         row.pop("natural_order")
         elapsed = row["video_end_s"]
-    return pd.DataFrame(rows)
+    frame = pd.DataFrame(rows)
+    frame.attrs["excluded_clips"] = excluded_rows
+    return frame
