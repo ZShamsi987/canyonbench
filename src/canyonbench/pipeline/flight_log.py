@@ -174,6 +174,13 @@ def recover_operational_flight(path: str | Path) -> pd.DataFrame:
         & operational["lat"].ne(0)
         & operational["lon"].ne(0)
     ].copy()
+    trajectory_moves = operational["lat"].nunique() > 1 or operational["lon"].nunique() > 1
+    if trajectory_moves:
+        for name in ("speed", "velocity_down"):
+            if name in operational:
+                values = operational[name].dropna()
+                if not values.empty and values.eq(0).all():
+                    operational[name] = float("nan")
     operational["elapsed_s"] = operational["elapsed_s"].round().astype(int)
     operational = operational.drop_duplicates("elapsed_s", keep="last").sort_values("elapsed_s")
     if operational.empty:

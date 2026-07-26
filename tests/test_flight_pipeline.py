@@ -87,6 +87,23 @@ def test_recover_operational_flight_accepts_worldview_prefixed_headers(
     ]
 
 
+def test_recover_marks_constant_zero_motion_channels_unavailable(tmp_path: Path) -> None:
+    log = tmp_path / "world10.txt"
+    log.write_text(
+        "Flight Phase,Elapsed Time,WV Latitude,WV Longitude,WV Altitude,"
+        "WV Speed,WV Velocity Down\n"
+        "Launching,1,36.9,-111.4,1300,0,0\n"
+        "Floating,2,36.8,-111.5,1400,0,0\n"
+        "Terminating,3,36.7,-111.6,1350,0,0\n",
+        encoding="utf-8",
+    )
+
+    result = recover_operational_flight(log)
+
+    assert result["speed"].isna().all()
+    assert result["velocity_down"].isna().all()
+
+
 def test_recover_requires_full_phase_sequence(tmp_path: Path) -> None:
     log = tmp_path / "bad.txt"
     log.write_text(

@@ -14,6 +14,7 @@
 - Preserve verified relative camera-clock gaps with an explicit clip-end mtime timeline policy.
 - Invalidate resumable extraction markers when the timeline or extraction contract changes.
 - Bound trajectory-segment duration and refine segments at geographic split boundaries so long phases cannot collapse the dataset into one split.
+- Mark constant-zero speed and vertical-velocity channels unavailable when the recovered GPS trajectory clearly moves.
 
 ## 0.1.0 - 2026-07-21
 
