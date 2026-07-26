@@ -274,6 +274,13 @@ def sample(
     distance_m: Annotated[float, typer.Option()] = 500,
     phash_distance: Annotated[int, typer.Option()] = 8,
     max_interval_s: Annotated[int | None, typer.Option()] = None,
+    segment_max_duration_s: Annotated[
+        int,
+        typer.Option(
+            min=60,
+            help="Maximum contiguous trajectory-segment duration in seconds.",
+        ),
+    ] = 600,
 ) -> None:
     """Deduplicate, assign segments, and create geographic splits."""
 
@@ -288,7 +295,7 @@ def sample(
         min_interval_s=min_interval_s,
         max_interval_s=max_interval_s,
     )
-    frame = assign_geographic_splits(assign_segments(frame))
+    frame = assign_geographic_splits(assign_segments(frame, max_duration_s=segment_max_duration_s))
     frame.attrs["raw_frame_count"] = raw_count
     frame["sampling_raw_count"] = raw_count
     output.parent.mkdir(parents=True, exist_ok=True)

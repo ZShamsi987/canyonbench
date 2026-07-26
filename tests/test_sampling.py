@@ -44,3 +44,25 @@ def test_segments_and_geographic_splits_do_not_leak() -> None:
     split = assign_geographic_splits(segmented, block_size_m=5000)
     assert split.groupby("segment_id").split.nunique().max() == 1
     assert split.groupby("spatial_block").split.nunique().max() == 1
+
+
+def test_segments_have_a_bounded_duration_and_preserve_block_splits() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "elapsed_s": second,
+                "lat": 36.8,
+                "lon": -111.5 + index * 0.02,
+                "phase": "Floating",
+            }
+            for index, second in enumerate(range(0, 1801, 300))
+        ]
+    )
+
+    segmented = assign_segments(frame, max_duration_s=600)
+    split = assign_geographic_splits(segmented, block_size_m=500)
+
+    spans = split.groupby("segment_id").elapsed_s.agg(lambda values: values.max() - values.min())
+    assert spans.max() < 600
+    assert split.groupby("segment_id").split.nunique().max() == 1
+    assert split.groupby("spatial_block").split.nunique().max() == 1

@@ -13,6 +13,7 @@ sampling:
   phash_distance: 8
   segment_max_gap_s: 600
   segment_max_jump_m: 10000
+  segment_max_duration_s: 600
 splits:
   spatial_block_m: 5000
   train: 0.70

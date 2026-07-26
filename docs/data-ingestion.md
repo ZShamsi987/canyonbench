@@ -24,6 +24,6 @@ Google Drive for desktop can stream cloud-only clips directly to `ffprobe` and `
 
 The telemetry has occasional missing or invalid GPS seconds. `build-frames` fails on these by default. For a reviewed real-data run, pass `--drop-unmatched --unmatched-output work/unmatched-frames.csv`; only image seconds absent from the canonical telemetry table are excluded, and the complete exclusion list is retained.
 
-Compute pHash on the cropped image. A frame cannot pass inside the configured minimum interval. Outside it, sufficient ground movement or perceptual change admits the frame. Segment breaks occur on phase changes, large time gaps, or implausible geographic jumps. Spatial blocks—not adjacent images—are assigned to splits, then whole segments are kept together.
+Compute pHash on the cropped image. A frame cannot pass inside the configured minimum interval. Outside it, sufficient ground movement or perceptual change admits the frame. Segment breaks occur on phase changes, large time gaps, implausible geographic jumps, or the configured maximum segment duration (10 minutes by default). Spatial blocks—not adjacent images—are assigned deterministically to splits. A trajectory segment is refined when it crosses a split boundary, ensuring that neither a block nor a segment can leak across subsets without collapsing a multi-hour phase into one split.
 
 The default values are starting points from the specification. Freeze final values before model evaluation and report them.

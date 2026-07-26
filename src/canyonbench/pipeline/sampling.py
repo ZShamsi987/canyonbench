@@ -115,6 +115,7 @@ def assign_segments(
     *,
     max_gap_s: int = 600,
     max_jump_m: float = 10_000,
+    max_duration_s: int | None = 600,
 ) -> pd.DataFrame:
     required = {"elapsed_s", "lat", "lon", "phase"}
     missing = sorted(required - set(frame.columns))
@@ -124,15 +125,28 @@ def assign_segments(
     ids: list[str] = []
     segment_number = 0
     previous: pd.Series | None = None
+    segment_start_s: int | None = None
     for _, current in ordered.iterrows():
+        current_elapsed_s = int(current["elapsed_s"])
+        if segment_start_s is None:
+            segment_start_s = current_elapsed_s
         if previous is not None:
-            gap = int(current["elapsed_s"]) - int(previous["elapsed_s"])
+            gap = current_elapsed_s - int(previous["elapsed_s"])
             jump = haversine_m(
                 (float(previous["lat"]), float(previous["lon"])),
                 (float(current["lat"]), float(current["lon"])),
             )
-            if gap > max_gap_s or jump > max_jump_m or current["phase"] != previous["phase"]:
+            duration_boundary = (
+                max_duration_s is not None and current_elapsed_s - segment_start_s >= max_duration_s
+            )
+            if (
+                gap > max_gap_s
+                or jump > max_jump_m
+                or current["phase"] != previous["phase"]
+                or duration_boundary
+            ):
                 segment_number += 1
+                segment_start_s = current_elapsed_s
         ids.append(f"seg_{segment_number:04d}")
         previous = current
     ordered["segment_id"] = ids
@@ -176,9 +190,14 @@ def assign_geographic_splits(
 
     output["split"] = output["spatial_block"].map(split)
     if "segment_id" in output:
-        leaking = output.groupby("segment_id")["split"].nunique()
-        if (leaking > 1).any():
-            # A segment crossing a boundary is assigned wholesale by its first frame.
-            segment_splits = output.groupby("segment_id", sort=False)["split"].first()
-            output["split"] = output["segment_id"].map(segment_splits)
+        # Geographic blocks own their deterministic split. Refine a trajectory
+        # segment when it crosses a split boundary instead of overriding the
+        # block split, which could collapse a long flight into a single subset.
+        original_segments = output["segment_id"].astype(str)
+        boundaries = original_segments.ne(original_segments.shift()) | output["split"].ne(
+            output["split"].shift()
+        )
+        output["segment_id"] = [
+            f"seg_{index:04d}" for index in boundaries.cumsum().sub(1).astype(int)
+        ]
     return output
