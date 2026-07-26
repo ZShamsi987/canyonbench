@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import httpx
 import numpy as np
 import pandas as pd
 import pytest
@@ -13,6 +14,11 @@ from canyonbench.registration.homography import (
     read_control_points,
     registration_threshold_m,
     validate_point_distribution,
+)
+from canyonbench.registration.reference import (
+    NAIP_EXPORT_ENDPOINT,
+    ReferenceChipRequest,
+    fetch_reference_chip,
 )
 
 
@@ -74,3 +80,50 @@ def test_read_control_points_requires_six(tmp_path: Path) -> None:
     synthetic_points().head(4).drop(columns="role").to_csv(path, index=False)
     with pytest.raises(DataValidationError, match="six"):
         read_control_points(path)
+
+
+def test_reference_request_rejects_unbounded_exports() -> None:
+    request = ReferenceChipRequest(-112, 36, -111, 37, width_px=4001)
+    with pytest.raises(DataValidationError, match="4000"):
+        request.export_parameters()
+
+
+def test_reference_chip_downloads_with_provenance_and_reuses_cache(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        if str(request.url).startswith(NAIP_EXPORT_ENDPOINT):
+            assert request.url.params["bboxSR"] == "4326"
+            assert request.url.params["imageSR"] == "26912"
+            assert "Year = 2023" in request.url.params["mosaicRule"]
+            return httpx.Response(
+                200,
+                json={
+                    "href": "https://example.test/chip.tif",
+                    "width": 512,
+                    "height": 512,
+                    "extent": {"spatialReference": {"wkid": 26912}},
+                },
+            )
+        return httpx.Response(200, content=b"synthetic-geotiff")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    request = ReferenceChipRequest(
+        west=-111.4532,
+        south=36.9272,
+        east=-111.4522,
+        north=36.9282,
+        width_px=512,
+        height_px=512,
+    )
+    output = tmp_path / "reference.tif"
+    first = fetch_reference_chip(request, output, client=client)
+    second = fetch_reference_chip(request, output, client=client)
+    client.close()
+
+    assert output.read_bytes() == b"synthetic-geotiff"
+    assert first["cache_hit"] is False
+    assert first["artifact"]["sha256"] == second["artifact"]["sha256"]
+    assert second["cache_hit"] is True
+    assert len(calls) == 2

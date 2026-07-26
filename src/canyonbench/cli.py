@@ -30,6 +30,7 @@ from canyonbench.pipeline.sampling import (
 )
 from canyonbench.pipeline.sync import compute_anchor, load_anchor, save_anchor
 from canyonbench.registration.batch import register_manifest
+from canyonbench.registration.reference import ReferenceChipRequest, fetch_reference_chip
 from canyonbench.validation import validate_release
 from canyonbench.version import __version__
 
@@ -311,6 +312,50 @@ def register(manifest_csv: Path, output_dir: Path, threshold_m: float) -> None:
         pd.read_csv(manifest_csv), output_dir=output_dir, default_threshold_m=threshold_m
     )
     typer.echo(f"Reliable registrations: {int(residuals.reliable.sum())}/{len(residuals)}")
+
+
+@app.command("reference-chip")
+def reference_chip(
+    output: Path,
+    west: Annotated[float, typer.Option(help="Western WGS84 longitude.")],
+    south: Annotated[float, typer.Option(help="Southern WGS84 latitude.")],
+    east: Annotated[float, typer.Option(help="Eastern WGS84 longitude.")],
+    north: Annotated[float, typer.Option(help="Northern WGS84 latitude.")],
+    width_px: Annotated[
+        int,
+        typer.Option(min=1, max=4000, help="Output width; USGS limits exports to 4000."),
+    ] = 2000,
+    height_px: Annotated[
+        int,
+        typer.Option(min=1, max=4000, help="Output height; USGS limits exports to 4000."),
+    ] = 2000,
+    year: Annotated[int, typer.Option(help="NAIP acquisition year to lock.")] = 2023,
+    image_crs: Annotated[
+        int,
+        typer.Option(help="Metric output EPSG code; CanyonBench uses NAD83 / UTM zone 12N."),
+    ] = 26912,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Replace an existing chip and provenance sidecar."),
+    ] = False,
+) -> None:
+    """Fetch one bounded USGS NAIP GeoTIFF into the ignored local cache."""
+
+    request = ReferenceChipRequest(
+        west=west,
+        south=south,
+        east=east,
+        north=north,
+        width_px=width_px,
+        height_px=height_px,
+        year=year,
+        image_crs=image_crs,
+    )
+    metadata = fetch_reference_chip(request, output, force=force)
+    action = "Using cached" if metadata["cache_hit"] else "Downloaded"
+    typer.echo(f"{action} {output}")
+    typer.echo(f"SHA-256: {metadata['artifact']['sha256']}")
+    typer.echo(f"Provenance: {output.with_suffix(output.suffix + '.reference.json')}")
 
 
 @app.command("build-release")

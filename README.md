@@ -16,6 +16,8 @@ No raw flight data or imagery is committed here. The test suite uses generated f
 - operational-flight extraction from repeated power-cycle log segments, including embedded-header and zero-GPS filtering;
 - clip inventory, anchor-based synchronization, one-frame-per-second extraction, left-third removal, deterministic elapsed-second naming, phase gates, perceptual/distance sampling, and master joins;
 - homography fitting with held-out control points, metric RMSE, reliability thresholds, and overlay warping;
+- storage-bounded USGS NAIP reference access with year-locked exports, checksums, and
+  provenance sidecars;
 - mask validation, green-cover fractions, 4x4 grounding labels, annotation agreement/adjudication, and calibrated VARI weak labels;
 - strict presence, vegetation, grounding, false-premise, and caption probe contracts;
 - resumable OpenAI-compatible inference with request budgets and immutable run manifests;
@@ -63,6 +65,9 @@ canyonbench sample work/frames_candidates.csv work/frames_sampled.csv \
   --min-interval-s 60 --distance-m 500 --phash-distance 8
 
 # 4. Merge adjudicated annotations and validated registration outputs.
+canyonbench reference-chip work/reference/selected-area.tif \
+  --west -111.46 --south 36.92 --east -111.44 --north 36.94 \
+  --width-px 2000 --height-px 2000
 canyonbench build-release work/frames_sampled.csv /path/to/canyonbench-data work/release
 canyonbench validate-release work/release
 
@@ -76,6 +81,12 @@ Commands default to safe, inspectable behavior: extraction prints commands unles
 For oversized Google Drive for desktop inputs on macOS, add `--evict-source-cache` to
 `clips` and `extract` so successfully read source ranges are returned to cloud-only state in
 bounded batches.
+
+Reference imagery is also remote-first. QGIS can stream the official USGS NAIP
+ImageServer, and `reference-chip` downloads only a chosen bounding box into ignored
+`work/reference/`. Every GeoTIFF gets a reproducible JSON sidecar. Do not download the
+189 full-resolution source tiles covering the route. See
+[docs/reference-imagery.md](docs/reference-imagery.md).
 
 ## Repository map
 
@@ -93,7 +104,11 @@ tests/            unit and synthetic end-to-end coverage
 docs/             design decisions and operational guides
 ```
 
-See [docs/architecture.md](docs/architecture.md), [docs/data-ingestion.md](docs/data-ingestion.md), [docs/evaluation.md](docs/evaluation.md), and [docs/releasing.md](docs/releasing.md) before running on private data.
+See [docs/architecture.md](docs/architecture.md),
+[docs/data-ingestion.md](docs/data-ingestion.md),
+[docs/reference-imagery.md](docs/reference-imagery.md),
+[docs/evaluation.md](docs/evaluation.md), and
+[docs/releasing.md](docs/releasing.md) before running on private data.
 
 ## Reproducibility and scope
 
