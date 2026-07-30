@@ -121,7 +121,7 @@ class CaptionResponse(StrictModel):
 
 
 class AdapterConfig(StrictModel):
-    kind: Literal["openai_compatible", "fixture"] = "openai_compatible"
+    kind: Literal["openai_compatible", "http_detector", "fixture"] = "openai_compatible"
     base_url: str | None = None
     api_key_env: str | None = None
     timeout_s: float = Field(default=120, gt=0)
@@ -130,12 +130,36 @@ class AdapterConfig(StrictModel):
 
 class ModelConfig(StrictModel):
     id: str
+    # Weights to load when this model is served locally. The benchmark identity
+    # (`id`) is what appears in every result, and it is not always the same
+    # string as the Hugging Face repository that supplies the weights.
+    served_model_id: str | None = None
     adapter: AdapterConfig
+    benchmark_role: (
+        Literal[
+            "proprietary",
+            "open_weight",
+            "remote_sensing",
+            "detector",
+            "fixture",
+        ]
+        | None
+    ) = None
+    provider: str | None = None
     max_tokens: int = Field(default=512, ge=1)
     temperature: float = Field(default=0, ge=0, le=2)
     image_max_side: int = Field(default=1536, ge=128)
     supports_json_schema: bool = True
     supports_pointing: bool = False
+    metered: bool = True
+    input_per_million_usd: float | None = Field(default=None, ge=0)
+    output_per_million_usd: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def complete_pricing_pair(self) -> ModelConfig:
+        if (self.input_per_million_usd is None) != (self.output_per_million_usd is None):
+            raise ValueError("model pricing must provide both input and output rates")
+        return self
 
 
 class BudgetConfig(StrictModel):

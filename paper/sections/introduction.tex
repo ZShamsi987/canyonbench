@@ -1,10 +1,55 @@
 \section{Introduction}
-Vision-language models are increasingly considered for rapid terrain summarization when a full remote-sensing pipeline is unavailable. In such settings, a hallucinated road, water body, or vegetation belt can misdirect attention. CanyonBench probes these failures in imagery from a high-altitude balloon trajectory over a sparse, visually distinctive canyon landscape containing both genuine positive and negative feature cases.
+High-altitude aerial imagery creates a sharp deployment problem for
+vision--language models: a road, water body, or cultivated field can be
+geographically plausible yet absent or below the image's resolvable scale.
+Ordinary accuracy cannot show whether a correct answer used visible evidence,
+and an overlapping localization can remain causally decorative.
 
-Our claims are limited to: (1) a human-labeled benchmark with validated registration where feasible; (2) associations between faithfulness and the ascent trajectory or effective ground sampling distance after quality and prevalence controls; and (3) susceptibility to false-premise prompts plus a single evidence-first baseline.
+CanyonBench-Trace places an exact virtual camera over frozen orthoimagery and
+applies the same projection to RGB, feature masks, and terrain. It then
+intervenes on the true feature, a covariate-matched irrelevant region, the
+model's own claimed cells, and random or texture-matched cells. This design
+measures both oracle-mask reliance and self-reported evidence faithfulness in a
+black-box setting.
 
-\paragraph{Contributions.} \TBD{Finalize after the data and registered subset are frozen.}
+\paragraph{Contributions.}
+We contribute (1) a reproducible three-group, three-class procedural benchmark
+with explicit extinction cases; (2) a multi-operator causal evidence protocol
+with matched nuisance controls; (3) result-independent validation instruments
+for presentation, edit detectability, operator sensitivity, and suppression
+efficacy; and (4) CAVE, a training-free accept-or-abstain wrapper based on
+necessity, sufficiency, and nuisance tests. \TBD{Adjust wording only if a frozen
+instrument requires claim restriction.}
 
 \section{Related Work}
-\TBD{Add verified citations covering VLM hallucination, grounding, remote-sensing VLMs, and calibration.}
+Broad geospatial VLM evaluations such as GEOBench-VLM and OmniEarth cover
+diverse perception, reasoning, grounding, and robustness tasks
+\cite{danish2025geobench,fu2026omniearth}. CanyonBench-Trace does not compete on
+breadth; it contributes a controlled causal instrument for a narrow deployment
+slice.
 
+The closest counterfactual work verifies expert-annotated chest-X-ray regions
+through foreground and background editing and evaluates attribution against those
+causal regions \cite{xiong2026visual}; that combination of correctness filtering,
+foreground deletion, and background-invariance checking is the nearest neighbour
+to this work, and we position against it directly rather than around it. Its
+companion attribution method requires token log-probabilities, which restricts it
+to open-weight systems. Counterfactual edits also expose segmentation
+hallucination \cite{li2025hallusegbench}, and whole-image controls and benchmarks
+of prior versus visual evidence expose answers that persist without supporting
+pixels \cite{zafar2026medical,sun2026prive}. Our distinct object is the model's
+own spatial self-report: the protocol intervenes on cells the queried black-box
+model names, in addition to exact oracle masks, and needs only repeated queries
+and a structured answer, so proprietary and open-weight models are evaluated
+identically. That prior work's own ablation, in which bounding-box zero masking
+outperformed diffusion inpainting for causal attribution, independently supports
+our choice of transparent suppression as the primary operator.
+
+ERASER established comprehensiveness, sufficiency, and perturbation-curve
+evaluation for rationales \cite{deyoung2020eraser}; Jacovi and Goldberg separate
+faithfulness from plausibility \cite{jacovi2020faithfulness}. Demonstrations of
+unfaithful verbal reasoning further motivate intervention rather than accepting
+self-explanation at face value \cite{turpin2023unfaithful,lanham2023faithfulness}.
+Finally, ICE shows that conclusions can vary sharply across intervention
+operators \cite{basu2026ice}, motivating our required O1--O3 agreement and
+grid/$K$ sensitivity analyses.

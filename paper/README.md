@@ -1,8 +1,42 @@
-# Paper scaffold
+# CanyonBench-Trace paper scaffold
 
-`main.tex` mirrors the eight-page workshop narrative in the specification: deployment motivation and related work; dataset and validated registration; three core claims; segment-aware statistics and controlled ascent associations; limitations and deployment implications.
+The scaffold follows v4: procedural benchmark construction, extinction-scale
+measurement, causal evidence tracing, instrument validation, and the
+training-free CAVE wrapper.
 
-The scaffold deliberately contains no fabricated data counts, model list, findings, citations, or registration success rates. Replace every `\TBD{...}` only from a frozen, validated release and immutable result manifest. Use the official VLM4RWD/NeurIPS 2026 style package once released; the current standard `article` class keeps the source independently compilable during development.
+It deliberately contains no fabricated model names, counts beyond the
+preregistered design, results, p-values, citations, or audit outcomes. Replace a
+`\TBD{}` only from a frozen artifact and cite its result manifest/hash in a
+nearby source comment.
 
-Generated tables and figures should cite both their result manifest and code commit in a nearby source comment. Keep calibration mechanisms and caption results in the appendix unless the final scope changes explicitly.
+## Figures and the main table are build products
 
+The six registered floats and the main table are never hand authored. Generate
+them from the frozen run and copy the outputs **flat into this directory**, beside
+`main.tex` (some engines refuse to resolve graphics from subdirectories):
+
+```bash
+canyonbench trace report <metrics.json> <metrics.rows.csv> out/report \
+  --dataset-dir <dataset>          # adds the GSD/extinction instrument figure
+cp out/report/{gsd_extinction,intervention_traces,accuracy_vs_efs,acuity_curves,\
+extinction_by_altitude,cave_frontier}.pdf paper/
+cp out/report/model_summary.tex paper/
+```
+
+`construction.pdf` (Figure 1, the pipeline schematic) is the only float without a
+generator; draw it once and drop it in.
+
+Any float whose artifact is absent renders as a red `TBD` rather than breaking the
+build or silently appearing empty, so the draft always compiles from a clean
+checkout. Do not commit the generated artifacts.
+
+Primary claims remain reportable under every outcome:
+
+1. the benchmark generator and extinction construct are valid;
+2. target-versus-distractor reliance is measured by OCRS;
+3. self-reported evidence faithfulness is measured by SEN/SES/EFS;
+4. CAVE trades reliability for coverage/cost.
+
+If an instrument fails, report that failure and restrict the corresponding
+claim. Do not choose operators, K, grids, prompts, or exclusions based on which
+version produces the preferred conclusion.

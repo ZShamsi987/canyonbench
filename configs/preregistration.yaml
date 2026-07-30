@@ -1,0 +1,96 @@
+schema_version: 4.0.0
+claims:
+  Claim1: A validated procedural instrument emits exact masks, camera geometry, calibrated degradations, and detectability-matched interventions.
+  Claim2: Presence accuracy, localization overlap, and causal reliance are reported jointly with per-model acuity thresholds.
+  Claim3: Grounding behavior is associated with effective resolution, image quality, and prompt framing without attributing the association to altitude alone.
+  Claim4: CAVE is evaluated as a reliability-coverage-cost frontier rather than an unconditional improvement claim.
+hypotheses:
+  H1: A substantial fraction of positive answers survive removal of the true visual evidence.
+  H2: Localization accuracy and localization faithfulness diverge.
+  H3: False-premise pressure grows as visual evidence weakens.
+  H4: Remote-sensing-specialized models improve localization more than causal faithfulness.
+  H5: CAVE reduces false positives and false-premise compliance at a measurable coverage and inference-cost tradeoff.
+  H6: A nontrivial fraction of positive answers occur inside the empirically gated extinction band.
+primary_endpoints: [macro_fpr, ocrs, efs]
+secondary_endpoints:
+  - balanced_accuracy
+  - macro_f1
+  - localization_area_penalized_f1
+  - prompt_prior_gap
+  - extinction_positive_rate
+  - acuity_threshold
+  - selective_risk
+exclusion_rules:
+  - G1 imagery/label date gap exceeds the registered class threshold.
+  - G2 independent feature sources fail consensus or a negative safety buffer is not clear.
+  - G3 feature is neither registered-resolvable nor an explicitly retained extinction case.
+  - G4 exclusion-only detector score is below threshold.
+  - Source, camera, mask, or hash validation fails.
+  - Target/distractor balance exceeds the registered maximum standardized mean difference.
+  - O4 is excluded from main causal results if its artifact audit fails.
+ablations:
+  - single source versus consensus source
+  - strict versus relaxed date alignment
+  - two-pixel versus three-pixel road gate
+  - exclusion detector enabled versus disabled
+  - O1 versus O2 versus O3 versus secondary O4
+  - target versus random versus texture-matched distractor
+  - grid 4x4 versus 6x6 versus 8x8
+  - cell budget K=3 versus K=6 versus K=10
+  - CAVE necessity/sufficiency/nuisance component ablations
+  - flight-corridor versus regional-OOD versus cross-biome
+  - clean versus singly degraded
+model_roster_rules:
+  - Target eight models and never fewer than six.
+  - Use three proprietary general VLMs from different vendors.
+  - Use three open-weight VLM sizes including one pointing-capable model.
+  - Use one or two remote-sensing-specialized VLMs.
+  - Use one non-language detector or segmenter as an imagery upper reference.
+outcome_matrix:
+  H1:
+    confirmed: Accuracy overstates grounding because positives survive true-evidence removal.
+    not_confirmed: The evaluated models are more causally grounded than expected under an instrument capable of detecting the opposite.
+  H2:
+    confirmed: Decorative localization is a measurable failure mode.
+    not_confirmed: Self-reported cells form a usable causal evidence channel.
+  H3:
+    confirmed: Language pressure increasingly overrides weak pixels.
+    not_confirmed: Prompt-prior susceptibility is stable across resolvability.
+  H4:
+    confirmed: Domain tuning improves perception more than causal grounding.
+    not_confirmed: Domain data improves both perception and faithfulness.
+  H5:
+    confirmed: CAVE reduces unsupported positives at the reported coverage and cost.
+    not_confirmed: CAVE is a negative mitigation result; the benchmark and measurement claims remain.
+  H6:
+    confirmed: The extinction band yields an optics-grounded hallucination measure.
+    not_confirmed: Models respect the empirically validated resolution limit.
+kill_criteria:
+  audit_contradiction_over_10_percent: Narrow classes/regions and tighten gates; report the failure rate.
+  unrealistic_views: Recalibrate pose/degradation and narrow claims to controlled aerial evaluation.
+  target_edits_more_detectable: Keep transparent suppression, drop photorealistic claims, and report V2.
+  flat_target_distractor_effect: Run and report V1/V6 before any grounding interpretation.
+  cave_no_useful_frontier: Report the negative result without test re-tuning.
+descope_ladder:
+  - optional real-flight temporal tier
+  - cross-biome group
+  - CAVE component ablations while retaining full CAVE
+  - oblique geometry
+  - Tier C and Claim 4
+  - reduce proprietary models from three to two
+multiplicity_method: benjamini_hochberg
+alpha: 0.05
+frozen_at: "2026-07-29"
+notes:
+  independence_unit: base geographic site
+  split: 20 percent development / 20 percent validation / 60 percent reserved test
+  headline_selective_coverage: 0.8
+  selective_curve_coverages: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  audit: Kunsh (AUD-KUNSH) and Atharva (AUD-ATHARVA), independently, on a stratified 10 percent binary-only sample
+  optional_real_flight_tier: out of critical path
+  source_candidates: 230 candidates frozen before materialization
+  group_a_feasibility: Site centers use the Glen/Marble/Page/Lake Powell near-field because the literal WORLD10 bounding box cannot supply ten buffered 24 km water-negative sites.
+  model_roster: configs/trace_run.frozen.yaml
+  compute_split: Open-weight and RS models are served in bfloat16 on Lambda GPU credit; proprietary and 235B-class models are reached over the OpenRouter API; all dataset construction and analysis is Adroit CPU.
+  precision: bfloat16 only; quantized serving is inadmissible for a faithfulness benchmark.
+  cash_cap_usd: 220

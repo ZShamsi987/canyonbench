@@ -1,29 +1,110 @@
-# Private data ingestion
+# Procedural source ingestion
 
-Keep recovered logs and videos outside Git. Back them up read-only and record checksums before parsing. `WORLD10.txt` is treated as untrusted tabular input because it contains power-cycle tests and embedded headers.
+This is the primary v4 data guide. The real balloon video is used for quality
+calibration and optional deployment analysis, not primary labels.
 
-## Operational-flight recovery
+## Required sources
 
-The parser finds the header, canonicalizes known field aliases, detects elapsed-time resets, and considers only segments containing Launching, Floating, and Terminating in order. It chooses the longest such segment, preferring the later segment on a tie. Rows with absent or zero latitude/longitude are removed and seconds are unique. Pass `--audit-output work/flight-segments.csv` to preserve a compact record of every excluded reset session and the one selected operational segment.
+For every base site, freeze:
 
-Review the recovered phase boundaries against approximately 2742 (Launching), 6806 (Floating), and 25688 (Terminating). Differences should be investigated, not force-corrected.
+| Layer | Preferred source | Independent check |
+|---|---|---|
+| RGB orthoimage | USDA NAIP | USGS high-resolution ortho fallback |
+| Water | USGS NHD/3DHP | a second hydrography layer |
+| Major road | Census TIGER/Line | OpenStreetMap |
+| Cultivated field | USDA Cropland Data Layer | independent parcel/crop layer |
+| Terrain | USGS 3DEP | optional, but required for depth matching when available |
+| Exclusion detector | independent class detector | target-class score raster required |
 
-## Video clock
+Do not treat one map source as self-validating. Every feature requires a primary
+and secondary mask, even when the candidate's target class is different.
 
-`clips` measures duration from the final decodable video timestamp rather than trusting the AVI container's declared duration. This matters for cameras that preallocate fixed-size, nominally 60-second files even when a clip contains only a second of video. It prefers creation timestamps only if every clip has one; otherwise it orders by modification time then natural filename and records that fallback. When the camera's wall clock is known to be wrong but its numeric filenames form the capture sequence, pass `--order-by filename`. When only timestamp order is trustworthy, pass `--order-by relative_time`; this records the timestamps as relative evidence and makes no claim about their calendar dates.
+## Site composition
 
-Ordering and timing are separate decisions. The default `--timeline-by contiguous` places the next clip immediately after the final decodable frame. If visual overlays or another independent check establish that filesystem modification time represents each clip's end clock, use `--timeline-by relative_mtime_end`. This preserves camera gaps and overlaps while discarding the absolute calendar date. Never select that mode from timestamps alone: verify at least the beginning, a middle boundary, and the end against visual or telemetry evidence. Identify one exact event—launch or burst—in one clip and use `sync`. The resulting JSON records the original evidence and one offset.
+The critical-path dataset has exactly 120 independent sites:
 
-Undecodable clips fail inventory by default. After independently verifying that a file is an empty camera placeholder rather than recoverable footage, use `--exclude-undecodable --excluded-output work/excluded-clips.csv`. The usable manifest and exact exclusion reason remain separate, auditable artifacts.
+| Group | Water | Road | Field | Total |
+|---|---:|---:|---:|---:|
+| Flight corridor | 20 | 20 | 20 | 60 |
+| Regional OOD | 12 | 12 | 12 | 36 |
+| Cross-biome | 8 | 8 | 8 | 24 |
+| Total | 40 | 40 | 40 | 120 |
 
-Google Drive for desktop can stream cloud-only clips directly to `ffprobe` and `ffmpeg`; do not mark an oversized source folder “available offline.” Extraction reads one clip at a time; inventory can use a small bounded pool such as `--workers 4` while preserving deterministic output order. On macOS, pass `--evict-source-cache` to release File Provider range caches in bounded batches after successful reads; this removes only local cached bytes, never the cloud original. Confirm files remain cloud-only after a trial clip before processing the full collection, and retain enough local space for extracted JPEGs.
+Each group/class cell is evenly split between present (including registered
+extinction) and negative sites. A site row must identify all source tile IDs and
+all water-body, road-segment, and parcel IDs so split leakage can be rejected.
 
-`extract` removes the left third using `crop=2/3 width:x=1/3`, samples one frame per second, and preserves per-clip intermediate names. Use `--resume` for long cloud-backed runs; a completion marker is written only after a clip produces frames, and a marker is trusted only while its extraction version, clip duration, flight-clock start, and recorded frame count still match. A stale marker causes existing frames for that clip to be removed and regenerated. Pass `--source-checksum-manifest work/source-checksums.json` to hash each source before its cache is evicted; hashes are persisted per clip so interrupted runs do not lose that work. `name-frames` converts extracted images into flight-second keys and writes a naming manifest. Use `--mode hardlink` when both directories are on the same filesystem to avoid storing a second physical JPEG copy. Inspect random frames around clip boundaries and the anchor before continuing.
+## Source preparation
 
-## Sampling
+1. Export a bounded orthoimage chip in a projected metric CRS appropriate to the
+   site.
+2. Rasterize the primary and secondary vector layers onto the exact imagery
+   grid, or align source rasters to that grid.
+3. Align the DEM and detector-score rasters identically.
+4. Confirm masks are binary.
+5. Compute SHA-256 for every source artifact.
+6. Create a source manifest from
+   `CanyonBench-data/manifests/source_manifest.example.json`.
+7. Add the site to `CanyonBench-data/manifests/sites.yaml`.
 
-The telemetry has occasional missing or invalid GPS seconds. `build-frames` fails on these by default. For a reviewed real-data run, pass `--drop-unmatched --unmatched-output work/unmatched-frames.csv`; only image seconds absent from the canonical telemetry table are excluded, and the complete exclusion list is retained.
+Every non-negative site must have a target-class detector score and matching
+source record. Full generation fails without it because G4 and the empirical
+extinction band cannot otherwise be evaluated.
 
-Compute pHash on the cropped image. A frame cannot pass inside the configured minimum interval. Outside it, sufficient ground movement or perceptual change admits the frame. Segment breaks occur on phase changes, large time gaps, implausible geographic jumps, or the configured maximum segment duration (10 minutes by default). Spatial blocks—not adjacent images—are assigned deterministically to splits. A trajectory segment is refined when it crosses a split boundary, ensuring that neither a block nor a segment can leak across subsets without collapsing a multi-hour phase into one split.
+Commands:
 
-The default values are starting points from the specification. Freeze final values before model evaluation and report them.
+```bash
+canyonbench trace rasterize-geojson water.geojson imagery.tif water_primary.tif
+canyonbench trace align-raster secondary-water.tif imagery.tif water_secondary.tif
+canyonbench trace align-raster dem.tif imagery.tif dem_aligned.tif --continuous
+```
+
+GeoJSON must already use the imagery CRS. Reproject externally when needed; do
+not guess a missing CRS.
+
+## Automatic gates
+
+Generation evaluates every target before rendering.
+
+- G1 rejects date gaps beyond the frozen threshold; fields use the tighter
+  threshold.
+- G2 requires two-source positive overlap within tolerance, or two-source
+  absence through a larger negative buffer.
+- G3 measures component size, apparent width, boundary distance, interior reach,
+  local contrast, aliasing, and occlusion. Resolvability gates on interior reach,
+  so a feature that crosses the footprint and therefore touches the frame border
+  is still resolvable; closest approach remains a reported diagnostic.
+  Below-resolution positives may remain only in the extinction category.
+- G4 is exclusion-only. A detector score can reject a site but never add a
+  feature.
+
+Save every pass/fail value. Do not hand-correct a failed gate. Fix the source or
+replace the candidate and rerun.
+
+## Split freeze
+
+Splits are deterministic and stratified: 20% development, 20% validation, 60%
+test. No split may share a source tile, feature ID, rounded coordinate, or
+overlapping footprint. Every derivative of a site inherits the same split.
+
+## Real-flight calibration
+
+WORLD10 contains multiple reset sessions; use the recovered operational run
+only. Camera date/time is known to be wrong and must not be used as calendar
+truth. Verified file/clip order is valid. The logged speed and vertical velocity
+channels are constant zero, so derive drift from successive GPS positions.
+Heading is unvalidated. Spectral and thermal channels are excluded.
+
+Extract only enough representative frames to calibrate image-quality
+distributions. Keep the large footage in Google Drive/cloud-only storage.
+`--evict-source-cache` remains available in the legacy clip tools to return
+successfully read macOS File Provider ranges to cloud-only state.
+
+Run:
+
+```bash
+canyonbench trace calibrate-quality /path/to/frames calibration/flight-quality.json
+```
+
+This measures the registered proxies and hashes every calibration frame. The
+calibration record—not the full video—is needed by the generator.

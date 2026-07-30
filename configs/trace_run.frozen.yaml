@@ -1,0 +1,154 @@
+# Roster of record for the whole project. One file defines every model, price,
+# and protocol setting; the two hosts differ only in paths, which the driver
+# scripts pass as --dataset-dir/--output-dir, and in which slice of the roster
+# they execute, which they pass as --only-model.
+#
+#   Lambda GPU  : open_weight (served locally), remote_sensing, detector
+#   Adroit + API: proprietary and any model reached over OpenRouter
+#
+# The defaults below are the Adroit/OpenRouter paths.
+dataset_dir: ../../CanyonBench-data/generated
+output_dir: ../../CanyonBench-data/runs/openrouter
+prompt_file: trace_prompts.yaml
+tiers: [A, B, C]
+analyses: [main]
+
+# Frozen 2026-07-29 from the OpenRouter public model catalog. Dollar rates are
+# per million tokens and must be rechecked by `trace plan-run` immediately
+# before execution; any provider/model substitution requires a decision-log row.
+models:
+  - id: openai/gpt-5.6-sol
+    benchmark_role: proprietary
+    provider: OpenAI
+    adapter: &openrouter
+      kind: openai_compatible
+      base_url: https://openrouter.ai/api/v1
+      api_key_env: OPENROUTER_API_KEY
+      timeout_s: 180
+      max_retries: 0
+    image_max_side: 768
+    supports_json_schema: true
+    metered: true
+    input_per_million_usd: 5.0
+    output_per_million_usd: 30.0
+
+  - id: anthropic/claude-opus-5
+    benchmark_role: proprietary
+    provider: Anthropic
+    adapter: *openrouter
+    image_max_side: 768
+    supports_json_schema: true
+    metered: true
+    input_per_million_usd: 5.0
+    output_per_million_usd: 25.0
+
+  - id: google/gemini-3.1-pro-preview
+    benchmark_role: proprietary
+    provider: Google
+    adapter: *openrouter
+    image_max_side: 768
+    supports_json_schema: true
+    metered: true
+    input_per_million_usd: 2.0
+    output_per_million_usd: 12.0
+
+  # Served locally on Lambda in bfloat16; no cash cost. `served_model_id` is the
+  # weights repository, while `id` stays the benchmark identity in every result.
+  - id: qwen/qwen3-vl-8b-instruct
+    served_model_id: Qwen/Qwen3-VL-8B-Instruct
+    benchmark_role: open_weight
+    provider: Qwen (self-served, vLLM)
+    adapter: &vllm_primary
+      kind: openai_compatible
+      base_url: http://127.0.0.1:8000/v1
+      api_key_env: VLLM_API_KEY
+      timeout_s: 180
+      max_retries: 0
+    image_max_side: 768
+    supports_json_schema: true
+    metered: false
+
+  - id: qwen/qwen3-vl-32b-instruct
+    served_model_id: Qwen/Qwen3-VL-32B-Instruct
+    benchmark_role: open_weight
+    provider: Qwen (self-served, vLLM)
+    adapter: *vllm_primary
+    image_max_side: 768
+    supports_json_schema: true
+    supports_pointing: true
+    metered: false
+
+  # 235B-A22B needs roughly 470 GB in bfloat16, which is outside the registered
+  # single-card instance plan, so the largest open-weight size level is reached
+  # over the API instead of self-served. Its published rates are ~2 percent of
+  # the proprietary rates, so this stays well inside the cash allocation.
+  - id: qwen/qwen3-vl-235b-a22b-instruct
+    benchmark_role: open_weight
+    provider: Qwen via OpenRouter
+    adapter: *openrouter
+    image_max_side: 768
+    supports_json_schema: true
+    metered: true
+    input_per_million_usd: 0.21
+    output_per_million_usd: 1.9
+
+  # Served on Lambda beside the Qwen models, on its own port because it needs a
+  # schema-enforcing compatibility wrapper rather than a plain vLLM endpoint.
+  - id: akshaydudhane/EarthDial_4B_RGB
+    served_model_id: akshaydudhane/EarthDial_4B_RGB
+    benchmark_role: remote_sensing
+    provider: EarthDial local service (Lambda)
+    adapter:
+      kind: openai_compatible
+      base_url: http://127.0.0.1:8001/v1
+      api_key_env: EARTHDIAL_API_KEY
+      timeout_s: 180
+      max_retries: 0
+    image_max_side: 768
+    # The local compatibility wrapper must enforce the CanyonBench JSON schema
+    # even though EarthDial itself does not expose a native schema API.
+    supports_json_schema: true
+    supports_pointing: true
+    metered: false
+
+  # Non-language upper reference; <8 GB, scheduled inside the same Lambda
+  # session as the VLM work rather than in a session of its own.
+  - id: canyonbench-independent-detector-v1
+    benchmark_role: detector
+    provider: Local exclusion-reference service (Lambda)
+    adapter:
+      kind: http_detector
+      base_url: http://127.0.0.1:8010
+      api_key_env: DETECTOR_API_KEY
+      timeout_s: 180
+      max_retries: 0
+    image_max_side: 768
+    supports_json_schema: true
+    metered: false
+
+# The cash allocation is $180 of OpenRouter credit plus $40 of contingency. GPU
+# compute and persistent storage are covered by Lambda credit and never appear
+# here. The tracker aborts the run on the first request that would breach this.
+budget:
+  max_requests: 60000
+  max_cost_usd: 220.0
+  input_per_million_usd: 0.0
+  output_per_million_usd: 0.0
+
+protocol:
+  grid_sizes: [4, 6, 8]
+  cell_budgets: [3, 6, 10]
+  screening_views: 960
+  causal_core_views: 160
+  prompt_cave_views: 120
+  robustness_views: 80
+  parse_retries: 3
+  seed: 2026
+
+interventions:
+  operators: [blur, texture, frequency, inpaint]
+  fractions: [0.25, 0.5, 0.75, 1.0]
+  feather_px: 5
+  random_candidates: 256
+  maximum_match_smd: 0.25
+  seed: 2026

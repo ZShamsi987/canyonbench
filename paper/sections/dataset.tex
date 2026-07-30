@@ -1,7 +1,62 @@
-\section{Dataset and Registration}
-Frames are synchronized to operational-flight telemetry through a visually verified anchor and named by elapsed second. Ground and initialization imagery is excluded; the ascent and float phases form the analysis populations. One-Hz frames are distance/perceptually sampled and grouped into trajectory segments and geographic blocks.
+\section{Procedural Dataset}
 
-Human annotators label six visible features, image conditions, and binary masks of resolvable living green vegetation. Public land-cover, hydrography, and road layers are annotation aids and weak-label comparisons, not per-frame truth.
+\begin{figure}[t]
+  \centering
+  \Generated{construction.pdf}{benchmark construction: orthophoto and vector
+  layers through the single transform to exact masks and interventions}
+  \caption{Benchmark construction. One transform carries the orthophoto, every
+  rasterized feature layer, and the terrain into the view, so masks are
+  pixel-exact by construction with no control points, registration, or human
+  boundary drawing.}
+  \label{fig:construction}
+\end{figure}
 
-For registration, correspondences map frame pixels to metric reference coordinates. Homographies are fitted without two or more held-out control points. A frame enters grounding only when held-out RMSE is no greater than one quarter of a 4-by-4 grid-cell ground width. \TBD{Report counts, agreement, reference products, threshold distribution, and exclusions.}
+The base unit is a geographic site. We use 60 flight-corridor, 36 regional-OOD,
+and 24 cross-biome sites, balanced across water, major roads, and cultivated
+fields and within-class presence. Imagery normally comes from NAIP; independent
+hydrography, road, and crop layers establish consensus labels. Optional 3DEP
+terrain supports depth-aware matching.
 
+Four automatic gates enforce source-date alignment, cross-source consensus,
+resolvability or explicit extinction status, and exclusion-only detector
+screening. Human involvement is limited to two independent objective auditors
+on a stratified 5--10\% sample.
+
+Each site is rendered at 3, 8, 16, and 24\,km AGL in nadir and moderate-oblique
+geometry at 1024 pixels and 40-degree horizontal field of view. This yields 960
+clean views. A stratified 240-view subset receives exactly one degradation
+calibrated from real balloon video. RGB, all masks, and depth use one identical
+source quadrilateral and homography.
+
+\begin{figure}[t]
+  \centering
+  \Generated{gsd_extinction.pdf}{ground sample distance and per-class apparent
+  width across the altitude lattice}
+  \caption{Ground sample distance and per-class evidence extinction. Because the
+  camera model fixes the ground sample distance, the projected apparent width of
+  every mapped feature is known in pixels. Major roads fall below one pixel
+  between 16 and 24\,km AGL while water and fields remain resolvable throughout,
+  so the design contains classes that should \emph{not} extinguish. Lines are
+  geometric; rings are measured medians from the frozen bundles.}
+  \label{fig:extinction}
+\end{figure}
+
+A view enters the extinction band only when apparent width is below the
+geometric threshold, local contrast against surrounding texture is below the
+calibrated bound, the independent exclusion detector reports no evidence, and
+the human audit sample confirms no visible trace. Extinction cases are retained
+and flagged, kept separate from ordinary negatives that contain no feature and
+from ordinary positives that contain a resolvable one.
+
+Because the source is already orthorectified, a synthesized nadir view omits the
+relief displacement a real camera would record. That displacement is
+$d = r\,\Delta h / H$ for radial distance $r$, within-view relief $\Delta h$, and
+flying height $H$; it corrupts no label, since image and masks share one
+transform. We quantify it per view from the projected terrain and report it as a
+sim-to-real fidelity gap rather than concealing it. \TBD{Report the frozen median
+and maximum relief displacement in pixels per altitude.}
+
+Sites are split 20/20/60 into development, validation, and reserved test. No
+tile, road segment, water body, parcel, coordinate, or overlapping footprint
+crosses splits. \TBD{Report frozen gate yields, extinction counts, source
+versions, audit results, and quality distributions.}

@@ -10,6 +10,15 @@ FEATURES: Final[tuple[str, ...]] = (
     "snow",
     "field",
 )
+TRACE_FEATURES: Final[tuple[str, ...]] = ("water", "road", "field")
+TRACE_NOMINAL_FEATURE_WIDTHS_M: Final[dict[str, float]] = {
+    # Registered nominal ground widths for the geometric extinction ladder: a
+    # two-lane major road, the Colorado River in the flight corridor, and a
+    # parcel-scale cultivated field.
+    "road": 12.0,
+    "water": 120.0,
+    "field": 800.0,
+}
 PRESENCE_VALUES: Final[tuple[str, ...]] = ("yes", "no", "uncertain")
 CAPTION_VALUES: Final[tuple[str, ...]] = ("yes", "no", "hedged")
 SCORED_PHASES: Final[tuple[str, ...]] = ("Launching", "Floating")

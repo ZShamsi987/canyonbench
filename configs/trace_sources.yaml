@@ -1,0 +1,112 @@
+schema_version: 4.0.0
+seed: 2026
+
+# The 24 km camera view has a 17.47 km nadir footprint. Oblique projection
+# shifts and enlarges the far edge, so every source package covers 25 km.
+# A 2 m working grid is finer than the worst registered view GSD (2.13 m/px)
+# while keeping the complete public-source corpus storage-feasible.
+working_resolution_m: 2.0
+source_half_extent_m: 12500.0
+negative_screen_half_extent_m: 10100.0
+minimum_candidate_separation_m: 2000.0
+candidate_multiplier: 2.0
+preferred_naip_years: [2023, 2022]
+discovery_landcover_year: 2023
+detector_landcover_year: 2022
+
+# Regions are frozen before candidate discovery. The verified WORLD10 track is
+# lat 36.584--36.931 N, lon 112.345--110.860 W. Group A uses its immediate
+# Glen/Marble/Page/Lake Powell near-field because the literal track bounding box
+# is never more than 10.57 km from mapped water and therefore cannot supply the
+# ten required 24 km water-negative sites. Groups B/C provide preregistered
+# dryland and cross-biome shifts inside CONUS public-data coverage.
+regions:
+  - id: world10_west
+    group: flight_corridor
+    west: -112.75
+    south: 35.95
+    east: -111.45
+    north: 37.45
+    weight: 1
+    description: Western WORLD10 near-field around Marble Canyon and the launch corridor.
+
+  - id: world10_east
+    group: flight_corridor
+    west: -111.55
+    south: 35.95
+    east: -110.20
+    north: 37.45
+    weight: 1
+    description: Eastern WORLD10 near-field around Page, Glen Canyon, and Lake Powell.
+
+  - id: sonoran_dryland
+    group: regional_ood
+    west: -113.80
+    south: 32.20
+    east: -111.70
+    north: 34.30
+    weight: 1
+    description: Sonoran dryland regional out-of-distribution stratum.
+
+  - id: rio_grande_dryland
+    group: regional_ood
+    west: -107.20
+    south: 32.30
+    east: -105.40
+    north: 34.60
+    weight: 1
+    description: Rio Grande and Chihuahuan dryland regional stratum.
+
+  - id: mojave_dryland
+    group: regional_ood
+    west: -117.40
+    south: 34.20
+    east: -115.30
+    north: 36.30
+    weight: 1
+    description: Mojave dryland regional out-of-distribution stratum.
+
+  - id: iowa_agriculture
+    group: cross_biome
+    west: -95.70
+    south: 41.10
+    east: -92.20
+    north: 43.20
+    weight: 1
+    description: Humid continental intensive-agriculture cross-biome stratum.
+
+  - id: louisiana_wetland
+    group: cross_biome
+    west: -92.20
+    south: 29.70
+    east: -90.50
+    north: 31.40
+    weight: 1
+    description: Subtropical river and wetland cross-biome stratum.
+
+  - id: nebraska_plains
+    group: cross_biome
+    west: -103.00
+    south: 40.50
+    east: -100.00
+    north: 42.50
+    weight: 1
+    description: Semi-arid Great Plains cross-biome negative-control stratum.
+
+  - id: wyoming_high_plains
+    group: cross_biome
+    west: -106.50
+    south: 42.50
+    east: -104.00
+    north: 44.50
+    weight: 1
+    description: Cold high-plains cross-biome negative-control stratum.
+
+  - id: nevada_great_basin
+    group: cross_biome
+    west: -116.50
+    south: 39.00
+    east: -114.50
+    north: 41.50
+    weight: 1
+    description: Cold Great Basin desert cross-biome negative-control stratum.

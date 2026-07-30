@@ -1,9 +1,65 @@
 \section{Results}
-\TBD{Insert frozen model table and primary structured metrics with segment-bootstrap intervals.}
 
-\subsection{Ascent-Trajectory Associations}
-\TBD{Insert controlled and prevalence/quality-stratified trends.}
+\begin{table*}[t]
+  \centering
+  \GeneratedTable{model_summary.tex}{main table from canyonbench trace report}
+  \caption{Main results. Balanced accuracy, false-positive rate, area-penalized
+  localization F1, OCRS, SEN, SES, EFS, OSG, prompt-prior gap, extinction
+  positive rate, acuity threshold, selective risk at fixed coverage, and CAVE
+  coverage. Every column is a build product of the frozen run.}
+  \label{tab:main}
+\end{table*}
 
-\subsection{False Premises and Evidence-First Prompting}
-\TBD{Insert paired compliance and mitigation results.}
+\TBD{Insert the frozen Tier A model/class table, format failures, extinction
+curves, and site-level intervals.}
 
+\subsection{Oracle and Self-Reported Evidence}
+
+\begin{figure}[t]
+  \centering
+  \Generated{accuracy_vs_efs.pdf}{task performance against explanation
+  faithfulness}
+  \caption{Presence accuracy against explanation faithfulness. The informative
+  region is any model that is accurate while weakly grounded, which ordinary
+  accuracy cannot distinguish.}
+  \label{fig:accuracy-vs-efs}
+\end{figure}
+
+\TBD{Report OCRS, SEN, SES, EFS, OSG, target/distractor balance, O1--O3 operator
+agreement, and V1/V2/V6 before interpreting null or positive effects.}
+
+\subsection{Acuity and Extinction}
+
+\begin{figure}[t]
+  \centering
+  \Generated{acuity_curves.pdf}{per-model psychometric acuity curves}
+  \Generated{extinction_by_altitude.pdf}{extinction-band positive rate across the
+  resolution lattice}
+  \caption{Per-model acuity and behaviour inside the extinction band. The acuity
+  threshold is the apparent width at which detection probability reaches one
+  half, and is obtainable for every model regardless of how the causal results
+  resolve.}
+  \label{fig:acuity}
+\end{figure}
+
+\TBD{Report per-model and per-class acuity thresholds, EPR, and the human
+extinction-band confirmation rate.}
+
+\subsection{Prompt Priors and CAVE}
+
+\begin{figure}[t]
+  \centering
+  \Generated{cave_frontier.pdf}{CAVE reliability--coverage--cost frontier}
+  \caption{CAVE frontier. Reliability against retained coverage, coloured by the
+  inference-call multiplier, reported as a frontier rather than a single
+  improvement number.}
+  \label{fig:cave}
+\end{figure}
+
+\TBD{Report neutral/false-premise/no-image comparisons and the full
+reliability--coverage--cost frontier, including necessity/sufficiency/nuisance
+ablations.}
+
+\subsection{Sensitivity}
+\TBD{Report geographic groups, clean/degraded, grids 4/6/8, K=3/6/10, date/source
+gates, detector, road-width, and O4-secondary analyses.}

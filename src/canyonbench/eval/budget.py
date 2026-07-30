@@ -26,6 +26,11 @@ class BudgetTracker:
             input_tokens * self.config.input_per_million_usd
             + output_tokens * self.config.output_per_million_usd
         ) / 1_000_000
+        return self.record_cost(cost)
+
+    def record_cost(self, cost: float) -> float:
+        """Record an already-priced request against the run-wide hard cap."""
+
         if self.cost_usd + cost > self.config.max_cost_usd + 1e-12:
             raise BudgetExceededError(
                 f"Cost cap would be exceeded: ${self.cost_usd + cost:.4f} > "

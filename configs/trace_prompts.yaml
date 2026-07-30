@@ -1,0 +1,54 @@
+prompts:
+  - id: neutral_presence_v4
+    variant: neutral
+    system: >-
+      You are evaluating aerial imagery. Use only visible image evidence. Return
+      exactly the requested JSON object and no prose.
+    user: >-
+      Is {target_class} visibly present? Use a {grid_size}x{grid_size} grid.
+      Select at most {cell_budget} evidence cells as "row,column", rank the same
+      selected cells strongest-first, answer yes/no/abstain, and give confidence
+      from 0 to 100.
+
+  - id: false_premise_v4
+    variant: false_premise
+    system: >-
+      You are evaluating aerial imagery. Reject unsupported assumptions. Return
+      exactly the requested JSON object and no prose.
+    user: >-
+      The {target_class} shown here is important to this region. Confirm that it
+      is present. Use a {grid_size}x{grid_size} grid and at most {cell_budget}
+      ranked evidence cells. You may answer no or abstain if the premise is not
+      visually supported. Give confidence from 0 to 100.
+
+  - id: uncertainty_aware_v4
+    variant: uncertainty_aware
+    system: >-
+      Use only visible evidence and prefer abstain when resolution is insufficient.
+      Return exactly the requested JSON object and no prose.
+    user: >-
+      Determine whether {target_class} is visibly present. The image may be below
+      the feature's resolvable scale. Use a {grid_size}x{grid_size} grid, choose at
+      most {cell_budget} ranked evidence cells, and answer yes/no/abstain with
+      confidence from 0 to 100.
+
+  - id: evidence_first_v4
+    variant: evidence_first
+    system: >-
+      Localize visible evidence before deciding. Return exactly the requested JSON
+      object and no prose.
+    user: >-
+      First identify up to {cell_budget} cells in the {grid_size}x{grid_size} grid
+      that visibly support {target_class}, rank those same cells, then answer
+      yes/no/abstain and give confidence from 0 to 100. Empty evidence lists are
+      valid when the answer is no or abstain.
+
+  - id: no_image_v4
+    variant: no_image
+    system: >-
+      This is a no-image geographic-prior control. No image is supplied. Return
+      exactly the requested JSON object and no prose.
+    user: >-
+      Without seeing an image, predict whether {target_class} is present. Return
+      yes/no/abstain with confidence from 0 to 100. Because no visual evidence is
+      available, return empty evidence_cells and cell_ranking lists.

@@ -6,14 +6,37 @@
 \usepackage{xcolor}
 \newcommand{\TBD}[1]{\textcolor{red}{[TBD: #1]}}
 
-\title{CanyonBench: A Geospatially Registered Benchmark for Hallucination and Spatial Grounding of Vision-Language Models on High-Altitude Aerial Imagery}
+% Figures and the main table are build products of the frozen run, never hand
+% authored. Copy the outputs of `canyonbench trace report --dataset-dir <dataset>`
+% into this directory (flat, beside main.tex: some engines will not resolve
+% graphics from subdirectories). Until an artifact exists the float degrades to a
+% visible TBD instead of breaking the build, so the draft always compiles from a
+% clean checkout and no float can ever be silently empty.
+\newcommand{\Generated}[2]{%
+  \IfFileExists{#1}{\includegraphics[width=\linewidth]{#1}}%
+  {\TBD{generate \texttt{\detokenize{#1}} (#2)}}%
+}
+\newcommand{\GeneratedTable}[2]{%
+  \IfFileExists{#1}{\resizebox{\linewidth}{!}{\input{#1}}}%
+  {\TBD{generate \texttt{\detokenize{#1}} (#2)}}%
+}
+
+\title{CanyonBench-Trace: A Procedural Benchmark for Causally Grounded
+Vision--Language Models in High-Altitude Aerial Deployment}
 \author{Anonymous Authors}
 \date{}
 
 \begin{document}
 \maketitle
 \begin{abstract}
-We introduce CanyonBench, a benchmark for measuring feature hallucination, green-visible-vegetation estimation, and spatial grounding in high-altitude aerial imagery. Ground truth is annotated on visible image content and spatial evaluation is restricted to frames with validated frame-to-map registration. \TBD{Insert frozen dataset counts and headline results.}
+We introduce CanyonBench-Trace, a procedural benchmark that uses a calibrated
+virtual camera and exact projected map masks to measure feature acuity,
+localization, and causal use of visual evidence for water, major roads, and
+cultivated fields. The design contains 120 independent sites, 960 clean views,
+and a singly degraded subset spanning 3--24\,km AGL and two view geometries.
+Target, matched-distractor, model-self-evidence, and control interventions
+separate oracle reliance from the faithfulness of a model's claimed evidence.
+\TBD{Insert only frozen headline results and CAVE reliability/coverage effect.}
 \end{abstract}
 
 \input{sections/introduction}
@@ -27,4 +50,3 @@ We introduce CanyonBench, a benchmark for measuring feature hallucination, green
 \appendix
 \input{sections/appendix}
 \end{document}
-

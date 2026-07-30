@@ -1,6 +1,16 @@
 \section{Discussion and Limitations}
-The benchmark isolates visible-image faithfulness more carefully than point-sampled geographic labels, but remains limited by one flight, correlated terrain coverage, planar registration over canyon relief, RGB ambiguity, source vintage differences, and human uncertainty. Registration failure narrows the grounding population rather than being hidden. The benchmark evaluates perception and evidence localization, not safe autonomous action.
+Procedural projection removes manual registration error but does not make map
+sources infallible. Source vintage, consensus-layer dependence, orthoimage
+artifacts, limited feature classes, synthetic camera geometry, and intervention
+distribution shift remain limitations. Exact masks establish where registered
+features project; they do not imply that a human or model can resolve them, so
+extinction is analyzed separately.
+
+Causal conclusions are operator-dependent unless O1--O3 agree and V2/V6 pass.
+CAVE trades reliability for abstention and repeated-call cost; it is not a
+guarantee of safe autonomous action. The first release de-scopes the optional
+real-flight temporal tier.
 
 \section{Conclusion}
-\TBD{Summarize only findings supported by the frozen experiment.}
-
+\TBD{Summarize only outcomes supported by the frozen result and instrument
+manifests.}

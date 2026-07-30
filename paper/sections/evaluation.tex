@@ -1,5 +1,48 @@
-\section{Evaluation Protocol}
-Structured probes ask for binary feature presence, vegetation percentage, and vegetation grid cells. False-premise probes compare a leading prompt with an evidence-first prompt. Free descriptions are secondary and use a blinded judge validated against two human annotators with a rule-based fallback.
+\section{Causal Evidence Tracing}
+Models return a constrained answer, confidence, up to $K$ evidence cells, and a
+ranking of exactly those cells. Malformed output is retried at most three times
+and then reported as format failure.
 
-We report false-positive rate and F1 for presence, signed error and MAE for vegetation, region precision/recall for grounding, and compliance plus mitigation delta for false premises. Confidence intervals resample trajectory segments. Ascent regressions include image-quality controls, ground-truth prevalence, and phase, with covariance clustered by segment. These are associations, not causal altitude effects.
+For oracle deletion, the most locally resolved parts of the exact mask are
+suppressed at 0/25/50/75/100\%. Matched-distractor deletion repeats the operator
+on an irrelevant region balanced on area, texture, edges, brightness, center
+distance, boundary complexity, and depth. Self-deletion removes ranked claimed
+cells one at a time; sufficiency preserves them while suppressing the rest.
+Random and texture-matched cells are controls. Strong local blur, background
+texture replacement, and frequency removal are all primary; inpainting is
+secondary pending artifact audit.
+All curves are summarized by area over the perturbation curve, following the
+comprehensiveness/sufficiency convention in ERASER \cite{deyoung2020eraser}.
+Operator-specific values and rank agreement are retained rather than selecting
+the most favorable operator \cite{basu2026ice}.
 
+\begin{figure}[t]
+  \centering
+  \Generated{intervention_traces.pdf}{the five registered tracing curves per
+  model and class}
+  \caption{Causal evidence tracing. Oracle deletion, matched-distractor deletion,
+  model-self-selected deletion, self-evidence sufficiency, and random or
+  texture-matched controls. The gaps between the curves, not their absolute
+  levels, are the measurements.}
+  \label{fig:traces}
+\end{figure}
+
+Tier A screens all 960 views. Tier B traces a stratified 160. Tier C evaluates
+prompts and CAVE on 120. We report accuracy/localization, OCRS, SEN, SES, EFS,
+OSG, false-premise prompt-prior gap, extinction positive rate, psychometric
+acuity, and risk--coverage curves.
+
+\section{Validation and Statistics}
+V1--V6 test synthetic feature presentation, edit detectability, operator
+agreement, grid/$K$ sensitivity, reference baselines, and suppression efficacy.
+Intervals bootstrap geographic groups and sites. Comparisons are paired by
+site. Registered mixed effects include scale, apparent width, area, geometry,
+quality, prompt, intervention, and model class. Benjamini--Hochberg correction
+covers macro FPR, OCRS, and EFS.
+
+\section{CAVE}
+CAVE re-queries a positive under claimed-cell deletion, claimed-cell
+preservation, and matched nuisance deletion. It accepts only if development-set
+thresholds on confidence, necessity, sufficiency, and nuisance all pass;
+otherwise it abstains. We report reliability, coverage, and cost frontiers plus
+component ablations.

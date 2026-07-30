@@ -16,7 +16,7 @@ from canyonbench.eval.metrics import load_and_score
 from canyonbench.eval.runner import load_run_config
 from canyonbench.eval.runner import run as run_benchmark
 from canyonbench.groundtruth.release import build_release as assemble_release
-from canyonbench.io import write_json
+from canyonbench.io import read_json, write_json
 from canyonbench.pipeline.clips import inventory_clips
 from canyonbench.pipeline.extract import extract_clips
 from canyonbench.pipeline.flight_log import audit_flight_segments, recover_operational_flight
@@ -35,17 +35,36 @@ from canyonbench.validation import validate_release
 from canyonbench.version import __version__
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_show_locals=False)
+trace_app = typer.Typer(
+    no_args_is_help=True,
+    pretty_exceptions_show_locals=False,
+    help="Build and evaluate the procedural CanyonBench-Trace v4 benchmark.",
+)
+app.add_typer(trace_app, name="trace")
+
+
+def _version_callback(value: bool) -> bool:
+    if value:
+        typer.echo(__version__)
+        raise typer.Exit()
+    return value
 
 
 @app.callback()
 def main(
-    version: Annotated[bool, typer.Option("--version", help="Show the package version.")] = False,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            help="Show the package version.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
+    ] = False,
 ) -> None:
     """Prepare, register, validate, run, and score CanyonBench."""
 
-    if version:
-        typer.echo(__version__)
-        raise typer.Exit()
+    del version
 
 
 @app.command()
@@ -409,6 +428,642 @@ def score(
     )
     write_json(output, metrics)
     typer.echo(json.dumps(metrics, indent=2))
+
+
+@trace_app.command("discover-sites")
+def trace_discover_sites(
+    config: Path,
+    output: Path,
+    cache_dir: Annotated[
+        Path,
+        typer.Option(help="Reusable cache for low-resolution discovery products."),
+    ] = Path("cache/site-discovery"),
+) -> None:
+    """Discover a deterministic, quota-balanced pool of candidate site centers."""
+
+    from canyonbench.trace.acquisition import discover_candidates, write_candidate_manifest
+    from canyonbench.trace.config import load_source_acquisition_config
+
+    policy = load_source_acquisition_config(config)
+    candidates = discover_candidates(policy, cache_dir.resolve())
+    write_candidate_manifest(output.resolve(), candidates)
+    typer.echo(f"Discovered {len(candidates)} candidate sites into {output.resolve()}")
+
+
+@trace_app.command("acquire-sources")
+def trace_acquire_sources(
+    config: Path,
+    candidates: Path,
+    source_root: Path,
+    output_manifest: Path,
+    report: Path,
+    flight_source: Annotated[
+        Path | None,
+        typer.Option(
+            help="Optional flight log whose checksum is frozen into every source manifest."
+        ),
+    ] = None,
+    start: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int | None, typer.Option(min=1)] = None,
+    fail_fast: Annotated[
+        bool,
+        typer.Option("--fail-fast", help="Stop at the first remote-source failure."),
+    ] = False,
+) -> None:
+    """Materialize aligned imagery, dual masks, detector layers, and terrain."""
+
+    from canyonbench.trace.acquisition import acquire_candidates
+    from canyonbench.trace.config import (
+        load_candidate_seeds,
+        load_source_acquisition_config,
+    )
+
+    policy = load_source_acquisition_config(config)
+    seeds = load_candidate_seeds(candidates)
+    completed = acquire_candidates(
+        seeds,
+        policy,
+        source_root.resolve(),
+        output_manifest.resolve(),
+        report.resolve(),
+        flight_source_path=flight_source.resolve() if flight_source is not None else None,
+        start=start,
+        limit=limit,
+        continue_on_error=not fail_fast,
+        progress=typer.echo,
+    )
+    typer.echo(f"Materialized {len(completed)} source sites in this invocation")
+    typer.echo(f"Prepared-site manifest: {output_manifest.resolve()}")
+    typer.echo(f"Acquisition report: {report.resolve()}")
+
+
+@trace_app.command("build")
+def trace_build(
+    config: Path,
+    calibration: Annotated[
+        Path | None,
+        typer.Option(help="Override path to the frozen real-flight quality JSON."),
+    ] = None,
+    smoke: Annotated[
+        bool,
+        typer.Option(
+            "--smoke", help="Allow a sub-quota site manifest for local integration tests."
+        ),
+    ] = False,
+) -> None:
+    """Generate aligned clean/degraded views and all causal interventions."""
+
+    from canyonbench.trace.config import load_project_config, load_sites
+    from canyonbench.trace.render import build_dataset
+
+    project = load_project_config(config)
+    sites = load_sites(project.dataset.site_manifest)
+    output = build_dataset(
+        project,
+        sites,
+        calibration_path=calibration,
+        enforce_quota=not smoke,
+    )
+    typer.echo(f"Procedural dataset: {output}")
+
+
+@trace_app.command("select-sites")
+def trace_select_sites(
+    candidates: Path,
+    config: Path,
+    output: Path,
+    attempts: Annotated[int, typer.Option(min=1)] = 1000,
+) -> None:
+    """Gate candidates and freeze the independent quota-balanced 120-site cohort."""
+
+    from canyonbench.trace.config import load_project_config, load_sites
+    from canyonbench.trace.selection import select_sites, write_selection
+
+    project = load_project_config(config)
+    selected, gates = select_sites(
+        load_sites(candidates),
+        project.dataset,
+        attempts=attempts,
+    )
+    write_selection(output, selected, gates)
+    typer.echo(f"Selected {len(selected)} independent sites into {output}")
+    typer.echo(f"Candidate gate report: {output.with_suffix('.gates.json')}")
+
+
+@trace_app.command("gate-ablations")
+def trace_gate_ablations(config: Path, output: Path) -> None:
+    """Run registered source/date/road-width/detector gate ablations."""
+
+    from canyonbench.trace.ablations import write_gate_ablation_report
+    from canyonbench.trace.config import load_project_config, load_sites
+
+    project = load_project_config(config)
+    sites = load_sites(project.dataset.site_manifest)
+    write_gate_ablation_report(sites, project.dataset, output)
+    typer.echo(f"Gate ablations: {output}")
+
+
+@trace_app.command("instrument-v1")
+def trace_instrument_v1(
+    image: Path,
+    output_dir: Path,
+    widths: Annotated[
+        str,
+        typer.Option(help="Comma-separated apparent widths in pixels."),
+    ] = "0.5,0.75,1,1.5,2,3,4,6",
+) -> None:
+    """Generate the V1 photometrically matched synthetic-width positive control."""
+
+    from canyonbench.trace.instruments import build_synthetic_width_series
+
+    parsed = [float(value.strip()) for value in widths.split(",") if value.strip()]
+    rows = build_synthetic_width_series(image, output_dir, parsed)
+    write_json(output_dir / "manifest.json", rows)
+    typer.echo(f"V1 synthetic controls: {len(rows)} -> {output_dir}")
+
+
+@trace_app.command("instrument-v1-run")
+def trace_instrument_v1_run(
+    config: Path,
+    negative_image: Path,
+    output_dir: Path,
+    models: Annotated[
+        list[str] | None,
+        typer.Option("--model", help="Repeat to run a subset; default is the full roster."),
+    ] = None,
+) -> None:
+    """Run and score V1 synthetic controls through the frozen model roster."""
+
+    from canyonbench.trace.config import load_trace_run_config
+    from canyonbench.trace.positive_control import (
+        run_positive_control,
+        score_positive_control,
+    )
+
+    predictions = run_positive_control(
+        load_trace_run_config(config),
+        negative_image,
+        output_dir,
+        model_ids=models,
+    )
+    result = score_positive_control(predictions, output_dir / "metrics.json")
+    typer.echo(json.dumps(result, indent=2))
+
+
+@trace_app.command("instrument-v2")
+def trace_instrument_v2(dataset_dir: Path, output: Path) -> None:
+    """Run the group-cross-validated O1-O4 edit-detectability audit."""
+
+    from canyonbench.trace.instruments import dataset_edit_detectability_audit
+
+    report = dataset_edit_detectability_audit(dataset_dir)
+    write_json(output, report)
+    typer.echo(json.dumps(report, indent=2))
+
+
+@trace_app.command("compute-check")
+def trace_compute_check(
+    role: Annotated[
+        Literal["adroit", "lambda", "openrouter"],
+        typer.Option(help="Which host this is: adroit (CPU), lambda (GPU), or openrouter."),
+    ],
+    dataset_dir: Annotated[Path | None, typer.Option(help="Frozen dataset root to verify.")] = None,
+    storage_root: Annotated[
+        Path | None, typer.Option(help="Persistent Lambda filesystem root.")
+    ] = None,
+    output: Annotated[Path | None, typer.Option(help="Optional JSON report path.")] = None,
+) -> None:
+    """Go/no-go preflight for one host: credentials, storage, GPU, and dtype."""
+
+    from canyonbench.compute import compute_check
+
+    required = ("OPENROUTER_API_KEY",) if role == "openrouter" else ()
+    report = compute_check(
+        role=role,
+        storage_root=storage_root,
+        dataset_dir=dataset_dir,
+        required_env=required,
+    )
+    for check in report["checks"]:
+        mark = "ok  " if check["ok"] else ("FAIL" if check["blocking"] else "warn")
+        typer.echo(f"{mark} {check['name']:34} {check['detail']}")
+    if output:
+        write_json(output, report)
+    typer.echo("READY" if report["ready"] else f"BLOCKED: {report['blocking_failures']}")
+    if not report["ready"]:
+        raise typer.Exit(code=1)
+
+
+@trace_app.command("vllm-profile")
+def trace_vllm_profile(
+    vram_gb: Annotated[
+        float | None,
+        typer.Option(help="Override detected device memory, in GB."),
+    ] = None,
+    server_args: Annotated[
+        bool, typer.Option("--server-args", help="Emit api_server flags instead of JSON.")
+    ] = False,
+) -> None:
+    """Emit the registered capability-adaptive vLLM serving profile."""
+
+    from canyonbench.compute import serving_profile
+
+    if vram_gb is None:
+        from canyonbench.compute import _device_report
+
+        devices = _device_report()["devices"]
+        if not devices:
+            typer.echo("No CUDA device detected; pass --vram-gb to compute a profile.", err=True)
+            raise typer.Exit(code=1)
+        vram_gb = min(float(device["vram_gb"]) for device in devices)
+    profile = serving_profile(vram_gb)
+    if server_args:
+        typer.echo(shlex.join(profile.as_server_args()))
+        return
+    typer.echo(json.dumps({"vram_gb": profile.vram_gb, **profile.as_vllm_kwargs()}, indent=2))
+
+
+@trace_app.command("merge-runs")
+def trace_merge_runs(
+    predictions: Annotated[list[Path], typer.Argument(help="Per-host predictions.jsonl files.")],
+    output: Annotated[Path, typer.Option(help="Merged predictions.jsonl path.")],
+) -> None:
+    """Merge the Lambda and OpenRouter prediction logs into one scored input."""
+
+    from canyonbench.trace.merge import merge_predictions
+
+    report = merge_predictions(predictions, output)
+    typer.echo(json.dumps(report, indent=2))
+
+
+@trace_app.command("fidelity-report")
+def trace_fidelity_report(
+    dataset_dir: Path,
+    output: Annotated[Path | None, typer.Option(help="Optional JSON report path.")] = None,
+) -> None:
+    """Quantify the reported sim-to-real relief-displacement gap (d = r*dh/H)."""
+
+    from canyonbench.trace.fidelity import dataset_relief_report
+
+    destination = output or dataset_dir / "relief_displacement.json"
+    report = dataset_relief_report(dataset_dir, destination)
+    summary = {key: value for key, value in report.items() if key != "views"}
+    typer.echo(json.dumps(summary, indent=2))
+    typer.echo(f"Relief-displacement report: {destination}")
+
+
+@trace_app.command("calibrate-quality")
+def trace_calibrate_quality(
+    frames_dir: Path,
+    output: Path,
+    pattern: Annotated[str, typer.Option(help="Recursive frame glob.")] = "*.jpg",
+) -> None:
+    """Measure registered degradation proxies from real balloon frames."""
+
+    from canyonbench.trace.degradation import calibrate_from_frames
+
+    paths = sorted(path for path in frames_dir.rglob(pattern) if path.is_file())
+    calibration = calibrate_from_frames(paths)
+    write_json(output, calibration.model_dump(mode="json"))
+    typer.echo(f"Calibrated {len(paths)} frames into {output}")
+
+
+@trace_app.command("validate")
+def trace_validate(
+    directory: Path,
+    config: Annotated[Path | None, typer.Option(help="Optional project config.")] = None,
+    skip_interventions: Annotated[bool, typer.Option("--skip-interventions")] = False,
+    output: Annotated[Path | None, typer.Option(help="Optional JSON report.")] = None,
+) -> None:
+    """Validate counts, schemas, hashes, masks, gates, and intervention coverage."""
+
+    from canyonbench.trace.config import load_project_config
+    from canyonbench.trace.validation import validate_dataset, validation_report
+
+    project = load_project_config(config) if config else None
+    report = validation_report(
+        validate_dataset(
+            directory,
+            project=project,
+            require_interventions=not skip_interventions,
+        )
+    )
+    if output:
+        write_json(output, report)
+    typer.echo(json.dumps(report, indent=2))
+    if not report["passed"]:
+        raise typer.Exit(code=1)
+
+
+@trace_app.command("audit-sample")
+def trace_audit_sample(
+    dataset_dir: Path,
+    output: Path,
+    auditor_1: Annotated[str, typer.Option()] = "auditor_1",
+    auditor_2: Annotated[str, typer.Option()] = "auditor_2",
+    fraction: Annotated[float, typer.Option(min=0.05, max=0.1)] = 0.1,
+) -> None:
+    """Create the objective two-auditor CSV; this is not semantic annotation."""
+
+    from canyonbench.trace.audit import create_audit_sample
+
+    path = create_audit_sample(
+        dataset_dir,
+        output,
+        fraction=fraction,
+        auditors=(auditor_1, auditor_2),
+    )
+    typer.echo(f"Audit sheet: {path}")
+
+
+@trace_app.command("audit-summary")
+def trace_audit_summary(
+    source: Path,
+    output: Path,
+    dataset_dir: Annotated[
+        Path | None,
+        typer.Option(help="Frozen dataset root; adds the human extinction-band validation."),
+    ] = None,
+) -> None:
+    """Validate completed audit rows and report agreement/failure votes."""
+
+    from canyonbench.trace.audit import extinction_band_validation, load_audit, summarize_audit
+
+    records = load_audit(source)
+    summary = summarize_audit(records)
+    if dataset_dir is not None:
+        summary["extinction_band_validation"] = extinction_band_validation(records, dataset_dir)
+    write_json(output, summary)
+    typer.echo(json.dumps(summary, indent=2))
+
+
+@trace_app.command("run")
+def trace_run(
+    config: Path,
+    only_model: Annotated[
+        list[str] | None,
+        typer.Option(help="Restrict this invocation to named roster models (repeatable)."),
+    ] = None,
+    dataset_dir: Annotated[
+        Path | None, typer.Option(help="Override the dataset root for this host.")
+    ] = None,
+    output_dir: Annotated[
+        Path | None, typer.Option(help="Override the run output directory for this host.")
+    ] = None,
+) -> None:
+    """Execute resumable Tier A/B/C structured black-box traces."""
+
+    from canyonbench.trace.config import load_run_config_for_host
+    from canyonbench.trace.runner import run_trace
+
+    loaded = load_run_config_for_host(config, dataset_dir=dataset_dir, output_dir=output_dir)
+    path = run_trace(loaded, only_models=only_model)
+    typer.echo(f"Trace predictions: {path}")
+
+
+@trace_app.command("plan-run")
+def trace_plan_run(
+    config: Path,
+    output: Path | None = None,
+    price_pilot: Annotated[
+        Path | None,
+        typer.Option(help="Optional price_pilot.json; re-prices the plan from measured tokens."),
+    ] = None,
+) -> None:
+    """Calculate nominal and worst-case paid calls and dollars before inference."""
+
+    from canyonbench.trace.config import load_trace_run_config
+    from canyonbench.trace.planning import write_call_plan
+
+    loaded = load_trace_run_config(config)
+    destination = output or loaded.output_dir / "call_plan.json"
+    observed = None
+    if price_pilot is not None:
+        measured = read_json(price_pilot)
+        observed = measured.get("observed_tokens_per_call") or None
+    plan = write_call_plan(loaded, destination, observed_tokens=observed)
+    typer.echo(json.dumps(plan, indent=2))
+    if not plan["nominal_fits_request_cap"]:
+        raise typer.Exit(code=1)
+
+
+@trace_app.command("price-pilot")
+def trace_price_pilot(
+    config: Path,
+    calls: Annotated[int, typer.Option(min=1, help="Real calls per model (D1 uses 50).")] = 50,
+    include_unmetered: Annotated[
+        bool, typer.Option("--include-unmetered", help="Also smoke-test free endpoints.")
+    ] = False,
+    output_dir: Annotated[
+        Path | None, typer.Option(help="Optional pilot output directory.")
+    ] = None,
+    dataset_dir: Annotated[
+        Path | None, typer.Option(help="Override the dataset root for this host.")
+    ] = None,
+) -> None:
+    """Measure real per-call tokens/cost and re-project the full run before spending."""
+
+    from canyonbench.trace.config import load_run_config_for_host
+    from canyonbench.trace.pilot import run_price_pilot
+
+    loaded = load_run_config_for_host(config, dataset_dir=dataset_dir)
+    report = run_price_pilot(
+        loaded,
+        calls_per_model=calls,
+        include_unmetered=include_unmetered,
+        output_dir=output_dir,
+    )
+    typer.echo(json.dumps(report, indent=2))
+    if not report["authorized"]:
+        raise typer.Exit(code=1)
+
+
+@trace_app.command("score")
+def trace_score(
+    dataset_dir: Path,
+    predictions: Path,
+    output: Path,
+    bootstrap_iterations: Annotated[int, typer.Option(min=0)] = 2000,
+    seed: int = 2026,
+    cave_decisions: Annotated[
+        Path | None, typer.Option(help="Optional frozen CAVE decision JSONL.")
+    ] = None,
+    cave_ablations: Annotated[
+        Path | None, typer.Option(help="Optional frozen CAVE component-ablation JSONL.")
+    ] = None,
+    cave_frontier: Annotated[
+        Path | None,
+        typer.Option(help="Optional development-only CAVE frontier JSON."),
+    ] = None,
+) -> None:
+    """Compute v4 performance, localization, causal, and uncertainty metrics."""
+
+    from canyonbench.trace.metrics import score_trace
+
+    result = score_trace(
+        dataset_dir,
+        predictions,
+        output,
+        bootstrap_iterations=bootstrap_iterations,
+        seed=seed,
+        cave_decisions=cave_decisions,
+        cave_ablations=cave_ablations,
+        cave_frontier_path=cave_frontier,
+    )
+    typer.echo(json.dumps(result, indent=2))
+
+
+@trace_app.command("cave-tune")
+def trace_cave_tune(
+    dataset_dir: Path,
+    predictions: Path,
+    output: Path,
+) -> None:
+    """Tune CAVE thresholds exclusively from development traces."""
+
+    from canyonbench.trace.cave_pipeline import tune_from_run
+
+    thresholds = tune_from_run(dataset_dir, predictions, output)
+    typer.echo(json.dumps(thresholds.model_dump(mode="json"), indent=2))
+    typer.echo(f"Frontier: {output.with_name(f'{output.stem}.frontier.json')}")
+
+
+@trace_app.command("cave-apply")
+def trace_cave_apply(
+    dataset_dir: Path,
+    predictions: Path,
+    thresholds: Path,
+    output: Path,
+) -> None:
+    """Apply frozen CAVE thresholds to all splits without re-tuning."""
+
+    from canyonbench.io import read_json
+    from canyonbench.trace.cave_pipeline import apply_from_run
+    from canyonbench.trace.schemas import CaveThresholds
+
+    config = CaveThresholds.model_validate(read_json(thresholds))
+    decisions = apply_from_run(dataset_dir, predictions, config, output)
+    typer.echo(f"CAVE decisions: {len(decisions)} -> {output}")
+
+
+@trace_app.command("cave-ablations")
+def trace_cave_ablations(
+    dataset_dir: Path,
+    predictions: Path,
+    thresholds: Path,
+    output: Path,
+) -> None:
+    """Apply necessity-only, sufficiency-only, nuisance-only, and full CAVE."""
+
+    from canyonbench.io import read_json
+    from canyonbench.trace.cave_pipeline import component_ablations_from_run
+    from canyonbench.trace.schemas import CaveThresholds
+
+    config = CaveThresholds.model_validate(read_json(thresholds))
+    records = component_ablations_from_run(
+        dataset_dir,
+        predictions,
+        config,
+        output,
+    )
+    typer.echo(f"CAVE component-ablation records: {len(records)} -> {output}")
+
+
+@trace_app.command("reference-baselines")
+def trace_reference_baselines(dataset_dir: Path, output: Path) -> None:
+    """Write always/base-rate/geographic-prior V5 predictions."""
+
+    from canyonbench.io import read_json
+    from canyonbench.trace.baselines import deterministic_baselines
+
+    frame = deterministic_baselines(read_json(dataset_dir / "index.json"))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(output, index=False)
+    typer.echo(f"Reference baseline rows: {len(frame)} -> {output}")
+
+
+@trace_app.command("extinction-figure")
+def trace_extinction_figure(dataset_dir: Path, output_dir: Path) -> None:
+    """Build the GSD/apparent-width extinction figure and ladder table."""
+
+    from canyonbench.trace.reporting import build_extinction_figure
+
+    outputs = build_extinction_figure(dataset_dir, output_dir)
+    typer.echo(f"Extinction artifacts: {len(outputs)} -> {output_dir}")
+
+
+@trace_app.command("report")
+def trace_report(
+    metrics: Path,
+    rows: Path,
+    output_dir: Path,
+    dataset_dir: Annotated[
+        Path | None,
+        typer.Option(help="Frozen dataset root; adds the GSD/extinction instrument figure."),
+    ] = None,
+) -> None:
+    """Create tidy/LaTeX tables and publication figures."""
+
+    from canyonbench.trace.reporting import build_extinction_figure, build_report
+
+    outputs = build_report(metrics, rows, output_dir)
+    if dataset_dir is not None:
+        outputs.extend(build_extinction_figure(dataset_dir, output_dir))
+    typer.echo(f"Report artifacts: {len(outputs)} -> {output_dir}")
+
+
+@trace_app.command("release")
+def trace_release(dataset_dir: Path, output_dir: Path) -> None:
+    """Build public dev/validation artifacts and hash-only test escrow."""
+
+    from canyonbench.trace.release import build_release
+
+    public, escrow = build_release(dataset_dir, output_dir)
+    typer.echo(f"Public release: {public}")
+    typer.echo(f"Private test escrow manifest: {escrow}")
+
+
+@trace_app.command("release-validate")
+def trace_release_validate(public_dir: Path, escrow_dir: Path) -> None:
+    """Re-hash and validate a built public/escrow release pair."""
+
+    from canyonbench.trace.release import validate_built_release
+
+    result = validate_built_release(public_dir, escrow_dir)
+    typer.echo(json.dumps(result, indent=2))
+
+
+@trace_app.command("align-raster")
+def trace_align_raster(
+    source: Path,
+    reference: Path,
+    output: Path,
+    continuous: Annotated[
+        bool, typer.Option("--continuous", help="Use bilinear resampling for a DEM.")
+    ] = False,
+) -> None:
+    """Reproject a mask, detector score, or DEM onto the exact imagery grid."""
+
+    from canyonbench.trace.sources import align_raster_to_reference
+
+    align_raster_to_reference(source, reference, output, categorical=not continuous)
+    typer.echo(f"Aligned raster: {output}")
+
+
+@trace_app.command("rasterize-geojson")
+def trace_rasterize_geojson(
+    source: Path,
+    reference: Path,
+    output: Path,
+    all_touched: Annotated[bool, typer.Option("--all-touched")] = False,
+) -> None:
+    """Rasterize a GeoJSON feature layer onto the exact imagery grid."""
+
+    from canyonbench.io import read_json
+    from canyonbench.trace.sources import rasterize_geojson
+
+    rasterize_geojson(read_json(source), reference, output, all_touched=all_touched)
+    typer.echo(f"Rasterized mask: {output}")
 
 
 if __name__ == "__main__":

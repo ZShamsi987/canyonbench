@@ -1,81 +1,88 @@
-# Reference imagery without a large local download
+# Imagery and map-source policy
 
-CanyonBench uses the official USGS NAIP ImageServer as its registration
-reference. A catalog query on July 26, 2026 found complete coverage of the 377
-sampled-frame corridor in Arizona from the 2023 acquisition: 189 primary tiles,
-0.3 metre nominal resolution, four bands, UTM projection. The service and data
-are public domain. Acknowledgment is:
+## Storage-safe acquisition
 
-> Map services and data available from U.S. Geological Survey, National
-> Geospatial Program.
+Do not download statewide mosaics or an entire balloon corridor. Acquire one
+bounded chip per frozen candidate site, keep large rasters in cloud/local
+ignored storage, and commit only manifests, hashes, terms, and small reports.
 
-The frozen source record is in the data repository at
-`registration/reference/source.yaml`. Registration coordinates use NAD83 / UTM
-zone 12N (`EPSG:26912`), which is metric and covers the full corridor.
+The generator reads local GeoTIFFs because reproducible camera projection
+requires immutable pixels. It does not depend on a live tile service during a
+reported run. A QGIS or browser map service may be used to discover candidates;
+the final bounded export must be hashed and dated.
 
-## Recommended: stream the layer in QGIS
-
-Do not download all 189 source tiles.
-
-1. Open QGIS.
-2. Choose **Layer → Add Layer → Add ArcGIS REST Server Layer**.
-3. Choose **New**, name the connection `USGS NAIP`, and use:
-   `https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer`
-4. Connect, select `USGSNAIPImagery`, and add it.
-5. Set the QGIS project CRS to `EPSG:26912`.
-6. Zoom to the approximate frame location using the `lat` and `lon` columns in
-   `metadata/frames_sampled.csv`.
-7. Pan and zoom until stable landmarks in the aerial frame match the NAIP
-   layer. QGIS requests only the visible map area and maintains its own bounded
-   cache.
-
-The balloon GPS is a search hint, not a claim that the pixel at that coordinate
-is the center of the camera image. High-altitude and oblique views can place the
-visible ground far from the platform position.
-
-## Freeze only a needed chip
-
-After an operator finds the matching map extent in QGIS, copy the extent in
-WGS84 and fetch a bounded GeoTIFF:
+The implemented default is:
 
 ```bash
-canyonbench reference-chip work/reference/img_006806_reference.tif \
-  --west -111.46 \
-  --south 36.92 \
-  --east -111.44 \
-  --north 36.94 \
-  --width-px 2000 \
-  --height-px 2000
+canyonbench trace discover-sites \
+  configs/trace_sources.yaml \
+  /Users/zafirshamsi/CanyonBench-data/manifests/trace_candidates.yaml \
+  --cache-dir /Users/zafirshamsi/CanyonBench-data/cache/site-discovery
+canyonbench trace acquire-sources \
+  configs/trace_sources.yaml \
+  /Users/zafirshamsi/CanyonBench-data/manifests/trace_candidates.yaml \
+  /Users/zafirshamsi/CanyonBench-data/sources \
+  /Users/zafirshamsi/CanyonBench-data/manifests/trace_prepared_candidates.yaml \
+  /Users/zafirshamsi/CanyonBench-data/reports/source_acquisition.json \
+  --flight-source /Users/zafirshamsi/Downloads/World-10/WORLD10.txt
 ```
 
-The command:
+Acquisition is restart-safe and writes a `COMPLETE` marker only after the full
+site and provenance record succeed. Use `--start` and `--limit` to batch.
 
-- selects natural-color bands from the 2023 primary NAIP imagery;
-- reprojects the result to `EPSG:26912`;
-- refuses either dimension above the USGS 4000-pixel service limit;
-- writes `*.tif.reference.json` with the exact request, source terms, metric
-  extent, byte count, and SHA-256;
-- reuses a matching cached file instead of downloading it again; and
-- refuses to overwrite a mismatched cache unless `--force` is explicit.
+## Orthoimagery
 
-Keep chips under `work/reference/`; `work/` and GeoTIFFs are ignored by Git.
-Commit control points, matrices, residuals, source YAML, and chip sidecars to
-the data release. Large raster chips remain reproducible on-demand cache
-objects, not Git history.
+USDA NAIP is preferred. USGS high-resolution orthoimagery is the fallback. A
+source record must include provider, product, version/year, acquisition date,
+native resolution, URL, SHA-256, license/terms, and source tile IDs.
 
-## Why this is the storage-safe choice
+Do not assume every public web service grants identical redistribution rights.
+Record the terms for the actual downloaded product and confirm redistribution
+before public release. If redistribution is restricted, release the generator,
+coordinates allowed by the terms, and hashes rather than the pixels.
 
-The full route is roughly 137 km long. Native 0.3 m imagery for the entire
-corridor would be unnecessarily large, while Git is a poor transport for large
-mutable rasters. Streaming plus small, checksummed exports preserves exact
-provenance without keeping a statewide or route-wide imagery copy on every
-computer.
+## Feature layers
 
-Official source pages:
+Primary and secondary sources must be genuinely independent enough to support a
+consensus claim. Record provider/version/date for both. For OpenStreetMap,
+preserve the relevant ODbL attribution and extraction date. For federal public
+domain products, preserve the agency/product acknowledgment even when not
+legally required.
 
-- USGS NAIP ImageServer:
-  <https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer>
-- USGS National Map terms:
-  <https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map>
-- USGS real-time GIS service access:
-  <https://www.usgs.gov/the-national-map-data-delivery/gis-data-download>
+## Coordinate systems
+
+Each site may use a different projected metric EPSG CRS. All of its layers must
+share that exact CRS, affine transform, bounds, width, and height before the
+camera runs. WGS84 longitude/latitude in `sites.yaml` locates the camera center;
+the renderer transforms it into the raster CRS.
+
+## Source manifest
+
+`source_manifest.json` is part of every site bundle. Its hash is repeated in
+each view manifest. A reported release is invalid if an artifact hash or source
+date changes after generation.
+
+## Disk layout
+
+Recommended ignored layout:
+
+```text
+CanyonBench-data/
+  sources/site_0001/
+    imagery.tif
+    water_primary.tif
+    water_secondary.tif
+    road_primary.tif
+    road_secondary.tif
+    field_primary.tif
+    field_secondary.tif
+    dem.tif
+    source_manifest.json
+  generated/
+  runs/
+  releases/
+```
+
+Use cloud placeholders for inactive sites if necessary, but ensure all inputs
+for one site are fully local during its build. After the validated generated
+bundle is backed up, source chips can return to cloud-only state.

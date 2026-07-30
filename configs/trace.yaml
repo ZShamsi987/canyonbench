@@ -1,0 +1,58 @@
+schema_version: 4.0.0
+
+dataset:
+  source_root: ../../CanyonBench-data/sources
+  output_root: ../../CanyonBench-data/generated
+  site_manifest: ../../CanyonBench-data/manifests/sites.yaml
+  quality_calibration: ../../CanyonBench-data/calibration/flight-quality.json
+  seed: 2026
+  width_px: 1024
+  height_px: 1024
+  horizontal_fov_deg: 40.0
+  altitudes_agl_m: [3000.0, 8000.0, 16000.0, 24000.0]
+  geometries: [nadir, oblique]
+  oblique_pitch_deg: 20.0
+  # The maximum 24 km oblique footprint is approximately 20.2 km wide.
+  # 22 km prevents cross-split footprint overlap with geometric margin.
+  minimum_site_separation_m: 22000.0
+  degraded_view_count: 240
+  quotas:
+    - {group: flight_corridor, per_class: 20}
+    - {group: regional_ood, per_class: 12}
+    - {group: cross_biome, per_class: 8}
+  split_fractions:
+    development: 0.2
+    validation: 0.2
+    test: 0.6
+  gates:
+    maximum_date_gap_days: 1095
+    field_maximum_date_gap_days: 550
+    consensus_tolerance_m: 12.0
+    minimum_consensus_fraction: 0.5
+    negative_safety_buffer_m: 30.0
+    minimum_apparent_width_px: 1.0
+    road_minimum_apparent_width_px: 2.0
+    extinction_width_px: 1.0
+    minimum_component_px: 4
+    minimum_boundary_distance_px: 2.0
+    minimum_local_contrast: 0.03
+    maximum_occlusion_fraction: 0.25
+    exclusion_detector_min_score: 0.25
+
+interventions:
+  operators: [blur, texture, frequency, inpaint]
+  fractions: [0.25, 0.5, 0.75, 1.0]
+  feather_px: 5
+  random_candidates: 256
+  maximum_match_smd: 0.25
+  seed: 2026
+
+protocol:
+  grid_sizes: [4, 6, 8]
+  cell_budgets: [3, 6, 10]
+  screening_views: 960
+  causal_core_views: 160
+  prompt_cave_views: 120
+  robustness_views: 80
+  parse_retries: 3
+  seed: 2026

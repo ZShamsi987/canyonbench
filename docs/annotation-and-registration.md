@@ -1,13 +1,60 @@
-# Annotation and registration operations
+# Objective audit (no semantic annotation)
 
-The companion annotation manual is authoritative. Label Studio projects should paste the numbered rules verbatim. Two annotators independently label masks, presence, and quality; a shared 30-frame calibration set and 12-frame qualification set are tracked separately.
+The v4 primary benchmark does not use Label Studio, drawn masks, manual control
+points, qualification tasks, a golden annotator, or adjudication. Exact masks
+come from projected frozen source layers.
 
-Masks are grayscale PNGs at exact frame dimensions with values only 0 and 255. Per-annotator names use `img_SSSSSS__ID.png`; adjudicated masks use `img_SSSSSS.png`. The validator flags non-binary masks and the mask utilities can detect connected foreground regions below four pixels.
+Human review is deliberately small and result-independent: two coauthors each
+inspect the same stratified 5–10% sample (about 96 views at 10%) and independently
+answer four yes/no questions:
 
-Control points use point-like, stable landmarks. Use at least six, target eight, spread across all quadrants with a central point. Mark two as `holdout`; they do not participate in fitting. Reference coordinates must use a metric CRS before RMSE is interpreted in metres. Save the CRS, source imagery identifier/date/license, and ground footprint width.
+| Field | Yes means |
+|---|---|
+| `overlay_aligned` | The displayed mask boundary visually follows the mapped feature. |
+| `feature_resolvable` | The target can be judged at this output scale without zooming beyond native pixels. |
+| `obvious_edit_artifact` | A causal edit has an obvious seam or corruption cue. |
+| `source_mismatch` | The frozen map source visibly disagrees with the orthoimage. |
 
-Registration reliability is not a subjective flag. It is the held-out RMSE compared with one quarter of one 4x4 cell's ground width (`ground_width_m / 16`). Unreliable frames retain presence and vegetation-cover labels but have no grid record.
+Notes are for objective failure details only. Auditors do not relabel the
+feature, redraw a mask, or see model answers.
 
-When calibrated horizontal/vertical field of view and altitude above local ground are available, `registration.geometry.estimate_ground_geometry` records the nadir/planar assumption, footprint dimensions, axis-specific metres per pixel, and the corresponding registration threshold. Do not substitute altitude above mean sea level for altitude above local ground without documenting the terrain model.
+## Procedure
 
-VARI thresholds are fitted only on the calibration split against human masks. Save the complete threshold-IoU curve. Never copy the selected threshold into a new split or release without recording its calibration provenance.
+1. Generate the sample with `canyonbench trace audit-sample`.
+   The command creates native-scale review sheets beside the CSV.
+2. Give each auditor a separate copy or filtered view; they must not discuss
+   decisions before both submit.
+3. Open the clean RGB, target mask overlay, and representative O1/O2/O3 edits at
+   native size.
+4. Fill every binary cell with `yes` or `no`; add a short note only for a
+   suspected failure.
+5. Merge rows without changing either auditor's values.
+6. Run `canyonbench trace audit-summary` with `--dataset-dir` so the
+   `feature_resolvable` votes are joined onto the derived per-view flags.
+7. Investigate systematic gate/source/operator failures before dataset freeze.
+   Do not selectively delete difficult views based on model results.
+
+Every sampled view must have exactly two records. The summary reports agreement,
+prevalence, and failure votes rather than a subjective gold label.
+
+## The audit validates the extinction band
+
+`feature_resolvable` doubles as the fourth extinction criterion. The first three
+are automatic — apparent width below the geometric threshold, local contrast below
+the calibrated bound, and no signal from the exclusion-only detector — and the
+audit closes the definition by confirming that humans see no trace either. The
+summary reports, per class:
+
+- the number of audited extinction views and the human confirmation rate;
+- every contradicted view, where both auditors did see the feature;
+- the resolvable-positive control rate, which must stay high or the audit itself
+  is suspect rather than the band.
+
+A contradicted extinction view is regenerated or excluded. It is never relabeled,
+and the band's calibration is reported as a result.
+
+## Legacy note
+
+The older frame-annotation and homography modules remain available for an
+optional real-flight temporal appendix. Their outputs must never be mixed into
+the procedural primary labels or used to tune v4 test thresholds.

@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use CanyonBench, cite the software release and the accompanying paper."
-title: "CanyonBench: code and evaluation harness"
+title: "CanyonBench-Trace: procedural causal-evidence benchmark and evaluation harness"
 type: software
 authors:
   - name: "CanyonBench contributors"
