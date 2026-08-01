@@ -15,9 +15,15 @@
 # Nothing here edits ~/.bashrc, installs into a shared prefix, touches another
 # checkout, or writes outside those two roots. Both are overridable, and the
 # guard below refuses to run if $CANYONBENCH_HOME is not this project.
+#
+# Every job also carries --nice=5000, so anything else this account submits
+# outranks CanyonBench in the queue no matter when it arrives.
 set -euo pipefail
 
-CANYONBENCH_HOME="${CANYONBENCH_HOME:-$HOME/canyonbench-trace}"
+# Both roots live on scratch. Adroit's /home is a 10 GiB quota shared with every
+# other project on the account, and a resolved environment is a couple of GB, so
+# putting the checkout there would risk breaking unrelated work.
+CANYONBENCH_HOME="${CANYONBENCH_HOME:-/scratch/network/$USER/canyonbench-trace}"
 CANYONBENCH_DATA="${CANYONBENCH_DATA:-/scratch/network/$USER/canyonbench-trace-data}"
 
 export CANYONBENCH_HOME CANYONBENCH_DATA
@@ -25,6 +31,8 @@ export GDAL_CACHEMAX="${GDAL_CACHEMAX:-512}"
 export GDAL_NUM_THREADS="${GDAL_NUM_THREADS:-ALL_CPUS}"
 export GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR
 export CPL_VSIL_CURL_ALLOWED_EXTENSIONS=.tif,.tiff
+# Keep uv's package cache off /home for the same reason.
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$CANYONBENCH_DATA/.uv-cache}"
 # Keep numeric libraries from oversubscribing the allocated cores.
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
 export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"

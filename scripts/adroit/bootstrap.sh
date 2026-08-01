@@ -5,7 +5,7 @@
 #
 # ISOLATION CONTRACT. This script creates or updates exactly two directories:
 #
-#   ~/canyonbench-trace                          the project checkout
+#   /scratch/network/$USER/canyonbench-trace     the project checkout and venv
 #   /scratch/network/$USER/canyonbench-trace-data   all data and results
 #
 # It does NOT edit ~/.bashrc, load or modify any module, touch any conda
@@ -16,7 +16,7 @@
 #   CANYONBENCH_HOME=... CANYONBENCH_DATA=... bash scripts/adroit/bootstrap.sh
 set -euo pipefail
 
-CANYONBENCH_HOME="${CANYONBENCH_HOME:-$HOME/canyonbench-trace}"
+CANYONBENCH_HOME="${CANYONBENCH_HOME:-/scratch/network/$USER/canyonbench-trace}"
 CANYONBENCH_DATA="${CANYONBENCH_DATA:-/scratch/network/$USER/canyonbench-trace-data}"
 REPO_URL="${REPO_URL:-https://github.com/ZShamsi987/canyonbench.git}"
 
@@ -37,6 +37,10 @@ if [ -e "$CANYONBENCH_HOME" ] && ! is_this_project "$CANYONBENCH_HOME"; then
   echo "  CANYONBENCH_HOME=\$HOME/canyonbench-trace2 bash \$0" >&2
   exit 78
 fi
+
+# /home is a 10 GiB quota shared with every other project on the account, so the
+# environment and the package cache both live on scratch.
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$CANYONBENCH_DATA/.uv-cache}"
 
 echo "== installing uv (user-local, no module needed) =="
 if ! command -v uv >/dev/null 2>&1; then

@@ -6,6 +6,7 @@
 #SBATCH --mem=32G
 #SBATCH --time=03:45:00
 #SBATCH --array=0-9%2
+#SBATCH --nice=5000
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 #
