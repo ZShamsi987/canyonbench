@@ -80,12 +80,14 @@ def test_instance_assessment_matches_the_registered_selection() -> None:
     rows = {row["instance"]: row for row in admissible_instances(planned)}
 
     a100 = rows["1x A100 40 GB SXM4"]
-    assert a100["verdict"] == "fallback"
+    assert a100["verdict"] == "primary"
     assert "vlm_26_34b" in a100["unserved"], "40 GB cannot serve a 26-34B model in bf16"
     assert "vlm_12_14b" in a100["serves"]
 
+    # Both H100s would serve everything, and neither exists in us-east-1 where
+    # the project filesystem lives.
     h100 = rows["1x H100 80 GB PCIe"]
-    assert h100["verdict"] == "primary"
+    assert h100["verdict"] == "unavailable_in_region"
     assert h100["unserved"] == []
 
     a10 = rows["1x A10 24 GB PCIe"]
@@ -358,9 +360,10 @@ def test_lambda_driver_selects_exactly_the_self_served_models() -> None:
         if url.hostname in {"127.0.0.1", "localhost"}:
             selected.append((model["id"], model.get("served_model_id"), url.port or 8000))
 
+    # The 32B needs ~68 GB in bfloat16 and is reached over the API instead, so
+    # only two models are served locally on the 40 GB card.
     assert [row[0] for row in selected] == [
         "qwen/qwen3-vl-8b-instruct",
-        "qwen/qwen3-vl-32b-instruct",
         "akshaydudhane/EarthDial_4B_RGB",
     ]
     assert all(weights for _, weights, _ in selected)
@@ -476,5 +479,7 @@ def test_operator_agreement_subset_keeps_v3_over_the_whole_roster(tmp_path) -> N
     cost = plan["cost_projection_usd"]
     assert cost["nominal_fits_cost_cap"], "the registered plan must fit the cash cap"
     assert 150 <= cost["nominal_usd"] <= 220, cost["nominal_usd"]
-    # The whole roster is priced, not just the proprietary vendors.
-    assert len(cost["by_model"]) == 4
+    # Five metered models: three proprietary plus the two Qwen sizes that do not
+    # fit the 40 GB card in bfloat16.
+    assert len(cost["by_model"]) == 5
+    assert "qwen/qwen3-vl-32b-instruct" in cost["by_model"]
