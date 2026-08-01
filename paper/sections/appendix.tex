@@ -4,6 +4,24 @@ intervention balance, artifact classifier, complete V1--V6 results, prompt text,
 model/runtime/cost manifests, mixed-model tables, BH family, audit form, and all
 registered ablations.}
 
+\subsection{Compute and reproducibility}
+Dataset construction is CPU-bound and separable from inference. Source
+acquisition, virtual-camera generation, gate evaluation, intervention rendering,
+and all statistical analysis run on CPU nodes; only the self-served models
+require VRAM. Open-weight and remote-sensing models are served under vLLM in
+bfloat16 on a single 80\,GB accelerator, one model at a time within one session,
+and proprietary models are reached over a commercial API. Quantized serving is
+inadmissible: it changes model behavior, and a result obtained under reduced
+precision would not describe the named model.
+
+Every query is keyed by a content hash of the model, source image, exact prompt,
+intervention, and response schema, so runs are append-only, resumable at the
+request that failed, and never pay twice for an identical view. The projected
+inference requirement is approximately 15 GPU-hours and the full API volume is
+approximately 16{,}600 calls; a measured price pilot re-prices the plan from
+observed provider token accounting before any production spend. \TBD{Replace
+with the frozen wall-clock, GPU-hour, and dollar totals from the run manifests.}
+
 \section{Outcome Matrix}
 \TBD{Map pass/fail combinations for acuity, oracle reliance, self-faithfulness,
 and CAVE to the corresponding claim restriction. Preserve null and instrument

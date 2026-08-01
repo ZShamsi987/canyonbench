@@ -48,20 +48,19 @@ Selection is driven by VRAM per GPU, not aggregate GPU count: the workload is
 request-parallel, so throughput scales through batching on one device, and extra
 devices help only when a single model exceeds one card.
 
-| Configuration | Verdict | Notes |
-|---|---|---|
-| 1× A100 40 GB SXM4 | **Primary** | Serves the 8B and the RS model with headroom; broadest availability |
-| 1× H100 80 GB PCIe | **Secondary** | Required for the 32B model; preferred fallback when A100 capacity is gone |
-| 1× H100 80 GB SXM5 | Substitute | Equivalent capability, higher interconnect bandwidth |
-| 1× A10 24 GB PCIe | Fallback | 7–8B and detector only, with reduced batch concurrency |
-| 2× H100 80 GB SXM5 | Not required | Only if a 70B-class model is added |
-| 4× H100, 8× A100 (40 or 80 GB) | Not recommended | Exceeds requirements; cannot be used concurrently without restructuring |
-| 8× Tesla V100 16 GB | **Excluded** | Volta lacks native bfloat16; violates the precision constraint |
+| Configuration | Rate | Verdict | Notes |
+|---|---|---|---|
+| 1× H100 80 GB PCIe | **$3.29/hr** | **Primary** | Cheapest 80 GB card; serves the entire roster including the 32B in one session |
+| 1× H100 80 GB SXM5 | $4.29/hr | Secondary | Same capability, higher rate; take it when PCIe capacity is unavailable |
+| 1× A100 40 GB SXM4 | — | Fallback | Cannot hold the 32B in bfloat16; needs a second session on an 80 GB card |
+| 1× A10 24 GB PCIe | — | Fallback | 7–8B and detector only, with reduced batch concurrency |
+| 2× H100 80 GB SXM5 | — | Not required | Only if a 70B-class model is added |
+| 4× H100, 8× A100 (40 or 80 GB) | — | Not recommended | Exceeds requirements; cannot be used concurrently without restructuring |
+| 8× Tesla V100 16 GB | — | **Excluded** | Volta lacks native bfloat16; violates the precision constraint |
 
-The frozen roster needs **one 80 GB card** for a single-session run, because
-`qwen/qwen3-vl-32b-instruct` will not fit 40 GB in bfloat16. If only a 40 GB
-A100 is available, serve the 8B and EarthDial there and take the 32B in a second
-short session on an H100.
+**Take the H100 80 GB PCIe.** It is the cheapest card that holds
+`qwen/qwen3-vl-32b-instruct` in bfloat16, so the whole roster runs in one
+session with no second launch and no instance-type juggling.
 
 `qwen/qwen3-vl-235b-a22b-instruct` needs roughly 470 GB in bfloat16, outside the
 registered instance plan, so the largest open-weight size level is reached over
@@ -70,10 +69,64 @@ proprietary rates.
 
 ## Credit position
 
+The $400 of Lambda credit is split before anything is launched: **$40 reserved
+for persistent storage** (~200 GB, billed per GB-month, and the filesystem must
+survive to the end of the project) and **$340 for GPU time**.
+
+| Card | Rate | Hours $340 buys | Projected hours | Headroom |
+|---|---|---|---|---|
+| H100 80 GB PCIe | $3.29/hr | ~103 h | 15 h | ~6.9× |
+| H100 80 GB SXM5 | $4.29/hr | ~79 h | 15 h | ~5.3× |
+
 Projected GPU consumption is approximately 15 GPU-hours: 2 hours of setup and
 weight retrieval, 6 hours for the roster across Tiers A–C, 2 hours of robustness
-re-runs, and 5 hours of defect-recovery buffer. Against $400 of Lambda credit the
-surplus is large, so the binding constraint is engineering time, not compute.
+re-runs, and 5 hours of defect-recovery buffer. At the PCIe rate that is about
+**$49 of the $340**, so the binding constraint is engineering time, not compute.
+The split is encoded in `canyonbench.compute.gpu_budget`.
+
+The surplus is large enough to extend Tier B causal tracing from the 160-view
+subset to the full 960-view lattice for the self-served models at no cash cost —
+that is the first upgrade to spend it on, ahead of anything that costs money.
+
+## Services and how to point the roster at them
+
+Two roster entries are services rather than plain vLLM endpoints. Neither
+requires editing the frozen roster: **export one environment variable per
+service and the run picks it up.**
+
+```bash
+export CANYONBENCH_ENDPOINT__CANYONBENCH_INDEPENDENT_DETECTOR_V1=http://127.0.0.1:8010
+export CANYONBENCH_ENDPOINT__AKSHAYDUDHANE_EARTHDIAL_4B_RGB=http://127.0.0.1:8001/v1
+```
+
+The variable name is `CANYONBENCH_ENDPOINT__` followed by the model id upper-cased
+with every non-alphanumeric character replaced by an underscore. Any model can be
+redirected this way; `canyonbench trace run` reports which overrides it applied.
+
+### The non-language detector
+
+`scripts/lambda/serve_detector.py` is a complete implementation of the Section 12
+upper reference: a SegFormer semantic segmenter whose ADE20K labels are mapped
+onto water, road, and field, answering the same structured schema every model
+answers. It needs only the serving stack vLLM already installs, fits in <8 GB
+beside the VLM session, and resolves its label mapping against the checkpoint's
+own `id2label` at startup so a class can never be silently mis-mapped.
+
+```bash
+python scripts/lambda/serve_detector.py --port 8010 &
+curl -s localhost:8010/health
+```
+
+### EarthDial
+
+`run_open_weight.sh` starts it on its configured port with plain vLLM. If it
+fails the health check, EarthDial needs its own schema-enforcing wrapper: start
+that by hand on any port, export the variable above, and rerun with
+`--only-model akshaydudhane/EarthDial_4B_RGB`.
+
+If either service cannot be stood up, the roster validator accepts 2–3
+open-weight and 1–2 remote-sensing models, so the registered fallback is to drop
+that entry and record the omission.
 
 ## Storage
 

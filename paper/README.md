@@ -1,8 +1,23 @@
 # CanyonBench-Trace paper scaffold
 
-The scaffold follows v4: procedural benchmark construction, extinction-scale
-measurement, causal evidence tracing, instrument validation, and the
-training-free CAVE wrapper.
+Target venue: **2nd Workshop on Grounded and Faithful Vision-Language Models for
+Real-World Deployment (VLM4RWD), NeurIPS 2026** — 8 pages excluding references
+and appendices, NeurIPS 2026 format, double-blind, submitted via OpenReview as a
+dataset/benchmark paper.
+
+The scaffold follows spec v4.2: procedural benchmark construction,
+extinction-scale measurement, causal evidence tracing, instrument validation, and
+the training-free CAVE wrapper. It is framed against the workshop's themes —
+visual grounding and evidence alignment, faithful reasoning, hallucination
+mitigation, counterfactual and causal evaluation, and deployment reliability
+under uncertainty.
+
+`main.tex` currently stands in the NeurIPS layout with `geometry`. Drop
+`neurips_2026.sty` beside it and switch the documentclass lines (see the comment
+at the top of the file); nothing else changes.
+
+Keep it anonymous: no author names, no institution, no cluster names, and no
+repository URL anywhere in `paper/`.
 
 It deliberately contains no fabricated model names, counts beyond the
 preregistered design, results, p-values, citations, or audit outcomes. Replace a

@@ -550,6 +550,19 @@ def trace_select_sites(
     typer.echo(f"Candidate gate report: {output.with_suffix('.gates.json')}")
 
 
+@trace_app.command("merge-sites")
+def trace_merge_sites(
+    output: Path,
+    chunks: Annotated[list[Path], typer.Argument(help="Per-chunk acquisition manifests.")],
+) -> None:
+    """Combine chunked acquisition manifests into one cohort manifest."""
+
+    from canyonbench.trace.selection import merge_site_manifests
+
+    report = merge_site_manifests(output, chunks)
+    typer.echo(json.dumps(report, indent=2))
+
+
 @trace_app.command("gate-ablations")
 def trace_gate_ablations(config: Path, output: Path) -> None:
     """Run registered source/date/road-width/detector gate ablations."""

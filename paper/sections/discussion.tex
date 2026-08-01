@@ -1,4 +1,19 @@
-\section{Discussion and Limitations}
+\section{Discussion}
+\paragraph{What this measures for deployment.}
+The quantity a deployed system needs is not average accuracy but the fraction of
+output that can be trusted, and at what cost. Reporting presence accuracy,
+localization, and causal reliance jointly makes the failure mode that matters
+visible: a model that is accurate and well-localized but weakly grounded will
+degrade silently under distribution shift, because nothing in its output signals
+that the answer was not driven by the pixels. The acuity threshold gives an
+operator a concrete deployment envelope---the apparent feature width below which
+a given model's positives stop being evidence---and the extinction band gives a
+regime where any positive is known to be ungrounded without needing a label.
+Self-reported evidence cells are the natural interface for that check, because
+they are already produced, require no model internals, and can be verified by
+re-querying. CAVE is the minimal version of that verification.
+
+\section{Limitations}
 Procedural projection removes manual registration error but does not make map
 sources infallible. Source vintage, consensus-layer dependence, orthoimage
 artifacts, limited feature classes, synthetic camera geometry, and intervention
@@ -11,6 +26,17 @@ CAVE trades reliability for abstention and repeated-call cost; it is not a
 guarantee of safe autonomous action. The first release de-scopes the optional
 real-flight temporal tier.
 
+\paragraph{Scope.} The benchmark evaluates operationally defined mapped features
+in three classes over a narrow, controlled geographic slice. It is a causal
+instrument, not a breadth benchmark, and it does not measure planning, action, or
+multi-step reasoning. Grounding measured here is a necessary condition for
+reliable aerial autonomy, not a sufficient one.
+
 \section{Conclusion}
+Whether a model \emph{sees}, whether it can \emph{point}, and whether it
+\emph{relies} on what it points at are three different questions, and only the
+first two are routinely measured. CanyonBench-Trace measures all three on the
+same views, with an optics-grounded case where the correct answer is knowable
+without annotation.
 \TBD{Summarize only outcomes supported by the frozen result and instrument
 manifests.}

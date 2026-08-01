@@ -20,7 +20,14 @@ id -un; hostname; date -Is
 echo "cpus-per-task=${SLURM_CPUS_PER_TASK:-?} mem=${SLURM_MEM_PER_NODE:-?}"
 
 echo "=== partitions, limits, and GPU types visible to this account ==="
-sinfo -o "%20P %5a %10l %6D %10G %N" || true
+# %l is the partition wall-time limit: this is the number the schedule depends
+# on. Princeton routes jobs by QOS, so `qos` is the authoritative view and the
+# published docs deliberately do not fix the values.
+sinfo -o "%20P %5a %10l %10L %6D %10G %N" || true
+echo "--- qos (authoritative limits for this account) ---"
+qos 2>/dev/null || sacctmgr -p show qos format=Name,MaxWall,MaxJobsPU,MaxTRESPU 2>/dev/null || true
+echo "--- account associations ---"
+sacctmgr -p show assoc user="$USER" format=Cluster,Account,Partition,QOS,MaxWall 2>/dev/null || true
 scontrol show config 2>/dev/null | grep -iE "MaxJobCount|MaxArraySize|DefaultTime" || true
 
 echo "=== storage ==="

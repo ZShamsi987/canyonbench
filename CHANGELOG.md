@@ -53,6 +53,12 @@
 - Add `trace merge-runs`, which joins the per-host prediction logs, refuses conflicting duplicates or mismatched dataset bundles, and carries the merged run manifest so benchmark roles survive into scoring.
 - Move the largest open-weight model to the API because its bfloat16 weights exceed the registered single-card plan, and lower the cash cap to the $220 v4.2 allocation.
 - Add RUNBOOK.md: the exact execution order across both hosts, with every blocking step and required human output marked.
+- Standardize on the H100 80 GB PCIe at $3.29/hr, encode the hourly rates and the $40 storage / $340 GPU credit split, and record that the projection uses about a seventh of the GPU allocation.
+- Ship the non-language detector reference as a runnable SegFormer service whose class mapping resolves against the checkpoint's own labels, so a mis-mapped class fails at startup rather than silently.
+- Add `CANYONBENCH_ENDPOINT__<MODEL>` overrides so a hand-started service is pointed at without editing the frozen roster.
+- Chunk source acquisition into resumable array tasks under four hours with a dependent cohort-freeze job, so the pipeline fits any Adroit wall-clock limit, and add `trace merge-sites`.
+- Add docs/AUDITOR-GUIDE.md: standalone instructions for the two objective auditors, who work before any model runs.
+- Reframe the paper for VLM4RWD: grounding, faithfulness, hallucination mitigation, and deployment reliability, with a compute and reproducibility appendix.
 
 ## 0.1.0 - 2026-07-21
 

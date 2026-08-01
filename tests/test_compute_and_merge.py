@@ -80,12 +80,12 @@ def test_instance_assessment_matches_the_registered_selection() -> None:
     rows = {row["instance"]: row for row in admissible_instances(planned)}
 
     a100 = rows["1x A100 40 GB SXM4"]
-    assert a100["verdict"] == "primary"
+    assert a100["verdict"] == "fallback"
     assert "vlm_26_34b" in a100["unserved"], "40 GB cannot serve a 26-34B model in bf16"
     assert "vlm_12_14b" in a100["serves"]
 
     h100 = rows["1x H100 80 GB PCIe"]
-    assert h100["verdict"] == "secondary"
+    assert h100["verdict"] == "primary"
     assert h100["unserved"] == []
 
     a10 = rows["1x A10 24 GB PCIe"]
@@ -367,3 +367,43 @@ def test_lambda_driver_selects_exactly_the_self_served_models() -> None:
     # EarthDial needs its own wrapper, so it must not collide with the vLLM port.
     ports = {identifier: port for identifier, _, port in selected}
     assert ports["akshaydudhane/EarthDial_4B_RGB"] != ports["qwen/qwen3-vl-8b-instruct"]
+
+
+def test_chunked_acquisition_manifests_merge_into_one_cohort(tmp_path) -> None:
+    """Acquisition is chunked to fit any wall clock; the chunks must recombine."""
+
+    import yaml as yaml_module
+
+    from canyonbench.trace.selection import merge_site_manifests
+
+    def site(identifier: str) -> dict[str, Any]:
+        return {"site_id": identifier, "group": "flight_corridor", "target_class": "road"}
+
+    first = tmp_path / "prepared.yaml.chunk0"
+    second = tmp_path / "prepared.yaml.chunk1"
+    first.write_text(yaml_module.safe_dump({"sites": [site("site_0001"), site("site_0002")]}))
+    second.write_text(yaml_module.safe_dump({"sites": [site("site_0003")]}))
+
+    output = tmp_path / "prepared.yaml"
+    report = merge_site_manifests(output, [first, second])
+    assert report["sites"] == 3
+    merged = yaml_module.safe_load(output.read_text())["sites"]
+    assert [row["site_id"] for row in merged] == ["site_0001", "site_0002", "site_0003"]
+
+    # A site present in two chunks is fine when identical, since acquisition is
+    # deterministic, and a hard error when it is not.
+    overlap = tmp_path / "prepared.yaml.chunk2"
+    overlap.write_text(yaml_module.safe_dump({"sites": [site("site_0001")]}))
+    assert merge_site_manifests(output, [first, second, overlap])["sites"] == 3
+
+    conflicting = site("site_0001")
+    conflicting["target_class"] = "water"
+    clash = tmp_path / "prepared.yaml.chunk3"
+    clash.write_text(yaml_module.safe_dump({"sites": [conflicting]}))
+    with pytest.raises(DataValidationError, match="differs between"):
+        merge_site_manifests(output, [first, clash])
+
+    with pytest.raises(DataValidationError, match="at least one"):
+        merge_site_manifests(output, [])
+    with pytest.raises(DataValidationError, match="missing chunk"):
+        merge_site_manifests(output, [tmp_path / "absent.yaml"])

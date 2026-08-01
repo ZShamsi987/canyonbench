@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import yaml
@@ -164,6 +165,52 @@ def select_sites(
         "No exact 120-site 20/20/60 assignment satisfies all quota, source-ID, "
         "and cross-split footprint constraints; add candidates without changing gates"
     )
+
+
+def merge_site_manifests(output: Path, sources: list[Path]) -> dict[str, Any]:
+    """Combine per-chunk acquisition manifests into one cohort manifest.
+
+    Acquisition is chunked into array tasks so it fits under any wall-clock
+    limit, and each task writes its own manifest. A site materialized twice must
+    be byte-identical, because acquisition is deterministic given the same seed
+    and sources; a disagreement means two chunks wrote different artifacts for
+    the same identifier and must not be silently reconciled.
+    """
+
+    if not sources:
+        raise DataValidationError("at least one chunk manifest is required")
+    missing = [str(path) for path in sources if not path.is_file()]
+    if missing:
+        raise DataValidationError(f"missing chunk manifests: {missing}")
+
+    merged: dict[str, dict[str, Any]] = {}
+    origin: dict[str, Path] = {}
+    for source in sorted(sources):
+        value = yaml.safe_load(source.read_text(encoding="utf-8")) or {}
+        rows = value.get("sites", value) if isinstance(value, dict) else value
+        if not isinstance(rows, list):
+            raise DataValidationError(f"chunk manifest is not a site list: {source}")
+        for row in rows:
+            identifier = str(row["site_id"])
+            if identifier in merged and merged[identifier] != row:
+                raise DataValidationError(
+                    f"{identifier} differs between {origin[identifier]} and {source}"
+                )
+            merged[identifier] = row
+            origin[identifier] = source
+
+    ordered = [merged[identifier] for identifier in sorted(merged)]
+    atomic_write_text(output, yaml.safe_dump({"sites": ordered}, sort_keys=False))
+    return {
+        "schema_version": "4.2.0",
+        "output": str(output),
+        "chunks": [str(path) for path in sorted(sources)],
+        "sites": len(ordered),
+        "by_chunk": {
+            str(path): sum(1 for value in origin.values() if value == path)
+            for path in sorted(sources)
+        },
+    }
 
 
 def write_selection(

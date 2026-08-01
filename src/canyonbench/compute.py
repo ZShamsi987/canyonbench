@@ -94,6 +94,7 @@ class Instance:
     ssd_tib: float
     verdict: str
     assessment: str
+    usd_per_hour: float | None = None
 
 
 INSTANCES: Final[tuple[Instance, ...]] = (
@@ -104,11 +105,12 @@ INSTANCES: Final[tuple[Instance, ...]] = (
         vcpu=30,
         ram_gib=200,
         ssd_tib=0.5,
-        verdict="primary",
+        verdict="fallback",
         assessment=(
-            "Sufficient for all 7-14B models with substantial KV cache headroom; "
-            "broadest availability of the suitable options."
+            "Serves the 7-8B and RS models with headroom but cannot hold the 32B "
+            "model in bfloat16, so it needs a second session on an 80 GB card."
         ),
+        usd_per_hour=None,
     ),
     Instance(
         name="1x H100 80 GB PCIe",
@@ -117,11 +119,12 @@ INSTANCES: Final[tuple[Instance, ...]] = (
         vcpu=26,
         ram_gib=200,
         ssd_tib=1.0,
-        verdict="secondary",
+        verdict="primary",
         assessment=(
-            "Required for 26-34B models and the preferred fallback when 40 GB "
-            "A100 capacity is unavailable."
+            "Registered selection. Cheapest 80 GB card, so it serves the entire roster "
+            "including the 32B model in one session."
         ),
+        usd_per_hour=3.29,
     ),
     Instance(
         name="1x H100 80 GB SXM5",
@@ -130,8 +133,12 @@ INSTANCES: Final[tuple[Instance, ...]] = (
         vcpu=26,
         ram_gib=225,
         ssd_tib=2.8,
-        verdict="substitute",
-        assessment="Equivalent capability to the PCIe variant; acceptable substitute.",
+        verdict="secondary",
+        assessment=(
+            "Equivalent capability at a higher hourly rate; take it when PCIe "
+            "capacity is unavailable."
+        ),
+        usd_per_hour=4.29,
     ),
     Instance(
         name="1x A10 24 GB PCIe",
@@ -339,6 +346,39 @@ class StorageLayout:
     def create(self) -> None:
         for directory in self.directories:
             directory.mkdir(parents=True, exist_ok=True)
+
+
+# Registered Lambda credit split. Storage is billed per GB-month on the
+# persistent filesystem and is reserved first, because the filesystem outlives
+# every instance and must survive to the end of the project.
+LAMBDA_CREDIT_USD: Final[float] = 400.0
+LAMBDA_STORAGE_RESERVE_USD: Final[float] = 40.0
+LAMBDA_GPU_ALLOCATION_USD: Final[float] = 340.0
+PROJECTED_GPU_HOURS: Final[float] = 15.0
+
+
+def gpu_budget(
+    *,
+    usd_per_hour: float,
+    allocation_usd: float = LAMBDA_GPU_ALLOCATION_USD,
+    projected_hours: float = PROJECTED_GPU_HOURS,
+) -> dict[str, float | bool]:
+    """Hours the GPU allocation buys on one instance, against the projection."""
+
+    if usd_per_hour <= 0:
+        raise ValueError("hourly rate must be positive")
+    affordable = allocation_usd / usd_per_hour
+    projected_cost = projected_hours * usd_per_hour
+    return {
+        "usd_per_hour": usd_per_hour,
+        "allocation_usd": allocation_usd,
+        "affordable_hours": affordable,
+        "projected_hours": projected_hours,
+        "projected_cost_usd": projected_cost,
+        "headroom_hours": affordable - projected_hours,
+        "headroom_multiple": affordable / projected_hours if projected_hours else float("inf"),
+        "fits": projected_cost <= allocation_usd,
+    }
 
 
 # Registered capacity plan; source tiles stay on Adroit and are never transferred.

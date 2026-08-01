@@ -1,25 +1,56 @@
 \section{Introduction}
-High-altitude aerial imagery creates a sharp deployment problem for
-vision--language models: a road, water body, or cultivated field can be
-geographically plausible yet absent or below the image's resolvable scale.
-Ordinary accuracy cannot show whether a correct answer used visible evidence,
-and an overlapping localization can remain causally decorative.
+An aerial platform running a vision--language model is a deployment setting in
+which grounding failures are consequential and hard to notice. A road, water
+body, or cultivated field can be geographically plausible yet absent from the
+scene, or present but below the image's resolvable scale. In both cases a model
+can answer confidently, cite a region, and be believed. Ordinary accuracy cannot
+show whether a correct answer used visible evidence, and an overlapping
+localization can remain causally decorative: the cited region may overlap the
+true feature while contributing nothing to the decision.
 
-CanyonBench-Trace places an exact virtual camera over frozen orthoimagery and
-applies the same projection to RGB, feature masks, and terrain. It then
-intervenes on the true feature, a covariate-matched irrelevant region, the
-model's own claimed cells, and random or texture-matched cells. This design
-measures both oracle-mask reliance and self-reported evidence faithfulness in a
-black-box setting.
+Separating these cases requires intervention rather than observation. If an
+answer depends on the evidence it cites, removing that evidence should change
+it; if the answer is driven by a language prior or by scene context, it will
+survive. Making that test trustworthy requires three things that annotated
+image sets cannot supply at once: masks exact enough that an intervention hits
+the feature and nothing else, an irrelevant region matched closely enough that
+generic edit sensitivity is controlled for, and a ground truth for
+\emph{unresolvability} that does not depend on annotator judgment.
+
+CanyonBench-Trace obtains all three from procedural generation. A deterministic
+virtual camera over frozen orthoimagery applies one transform to RGB, feature
+masks, and terrain, so masks are pixel-exact by construction with no
+registration and no boundary drawing. Because the camera fixes ground sample
+distance, the projected apparent width of every mapped feature is known in
+pixels, which yields the benchmark's sharpest instrument: a road that is mapped
+and confirmed at 3\,km becomes physically unresolvable at float altitude in the
+same scene, so a positive answer there is ungrounded by imaging geometry rather
+than by opinion. Water and fields remain resolvable throughout, controlling for
+a model that merely becomes more conservative as altitude increases.
+
+The protocol then intervenes on the true feature, on a covariate-matched
+irrelevant region, on the cells the model itself verbalizes, and on random or
+texture-matched controls. It needs only repeated queries and a structured
+answer, so proprietary and open-weight systems are measured identically, and the
+same measurement extends to a mitigation: CAVE re-queries a positive under
+deletion, preservation, and nuisance edits of its own claimed cells, and
+converts unsupported positives into abstentions.
 
 \paragraph{Contributions.}
-We contribute (1) a reproducible three-group, three-class procedural benchmark
-with explicit extinction cases; (2) a multi-operator causal evidence protocol
-with matched nuisance controls; (3) result-independent validation instruments
-for presentation, edit detectability, operator sensitivity, and suppression
-efficacy; and (4) CAVE, a training-free accept-or-abstain wrapper based on
-necessity, sufficiency, and nuisance tests. \TBD{Adjust wording only if a frozen
-instrument requires claim restriction.}
+(1) A procedural benchmark that emits aerial views with pixel-exact masks,
+camera geometry, calibrated degradations, and matched counterfactual
+interventions, with source-consensus and resolvability gates and an optically
+defined extinction band. (2) A black-box causal evidence protocol that measures
+necessity and sufficiency of a model's \emph{own} stated evidence alongside
+oracle-mask reliance, under three suppression operators with reported ranking
+stability. (3) Result-independent validation instruments---synthetic-insert
+positive controls, edit detectability, operator agreement, $K$ sensitivity,
+reference baselines, and suppression efficacy---so that a null causal result is
+interpretable rather than ambiguous. (4) Per-model acuity thresholds and
+selective-risk frontiers that report not how often a model is right but how much
+of its output can be trusted at what cost, and CAVE, a training-free
+accept-or-abstain wrapper reported as a reliability--coverage--cost frontier.
+\TBD{Adjust wording only if a frozen instrument requires claim restriction.}
 
 \section{Related Work}
 Broad geospatial VLM evaluations such as GEOBench-VLM and OmniEarth cover

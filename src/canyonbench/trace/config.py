@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -62,18 +64,48 @@ def load_project_config(path: str | Path) -> ProjectConfig:
     return config.model_copy(update={"dataset": dataset})
 
 
+# A service that is stood up by hand gets its address from the environment, so
+# the frozen roster never has to be edited to record where it happened to land.
+# `CANYONBENCH_ENDPOINT__<MODEL ID>` overrides one model, with every character
+# outside [A-Z0-9] replaced by an underscore.
+ENDPOINT_ENV_PREFIX = "CANYONBENCH_ENDPOINT__"
+
+
+def endpoint_env_var(model_id: str) -> str:
+    """The environment variable that overrides one model's base URL."""
+
+    return ENDPOINT_ENV_PREFIX + re.sub(r"[^A-Z0-9]+", "_", model_id.upper()).strip("_")
+
+
+def apply_endpoint_overrides(config: TraceRunConfig) -> tuple[TraceRunConfig, dict[str, str]]:
+    """Point models at the addresses their services were actually started on."""
+
+    applied: dict[str, str] = {}
+    models = []
+    for model in config.models:
+        override = os.environ.get(endpoint_env_var(model.id))
+        if override:
+            applied[model.id] = override
+            model = model.model_copy(
+                update={"adapter": model.adapter.model_copy(update={"base_url": override})}
+            )
+        models.append(model)
+    return (config.model_copy(update={"models": models}) if applied else config), applied
+
+
 def load_run_config_for_host(
     path: Path,
     *,
     dataset_dir: Path | None = None,
     output_dir: Path | None = None,
 ) -> TraceRunConfig:
-    """Load the frozen roster with host-specific paths applied.
+    """Load the frozen roster with host-specific paths and endpoints applied.
 
     One config is the roster of record for the whole project, but Adroit and
-    Lambda mount the dataset and write results in different places. Overriding
-    only the two paths keeps the model definitions, prices, protocol, and
-    intervention settings identical on both hosts.
+    Lambda mount the dataset and write results in different places, and a
+    hand-started service lands on whatever address the operator chose. Overriding
+    those keeps the model definitions, prices, protocol, and intervention
+    settings identical on both hosts.
     """
 
     config = load_trace_run_config(path)
@@ -82,7 +114,9 @@ def load_run_config_for_host(
         updates["dataset_dir"] = dataset_dir.expanduser().resolve()
     if output_dir is not None:
         updates["output_dir"] = output_dir.expanduser().resolve()
-    return config.model_copy(update=updates) if updates else config
+    config = config.model_copy(update=updates) if updates else config
+    config, _ = apply_endpoint_overrides(config)
+    return config
 
 
 def load_trace_run_config(path: str | Path) -> TraceRunConfig:

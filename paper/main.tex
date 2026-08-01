@@ -1,3 +1,11 @@
+% Submission target: 2nd Workshop on Grounded and Faithful Vision-Language Models
+% for Real-World Deployment (VLM4RWD), NeurIPS 2026. Eight pages excluding
+% references and appendices, double-blind, submitted through OpenReview.
+%
+% Drop neurips_2026.sty beside this file and switch the two lines below to
+%   \documentclass{article}\usepackage[final]{neurips_2026}
+% once the workshop publishes the style file. Nothing else changes: the geometry
+% package here only stands in for that layout.
 \documentclass[10pt]{article}
 \usepackage[margin=1in]{geometry}
 \usepackage{booktabs}
@@ -21,22 +29,34 @@
   {\TBD{generate \texttt{\detokenize{#1}} (#2)}}%
 }
 
-\title{CanyonBench-Trace: A Procedural Benchmark for Causally Grounded
-Vision--Language Models in High-Altitude Aerial Deployment}
+\title{CanyonBench-Trace: Measuring Whether Aerial Vision--Language Models
+Depend on the Evidence They Cite}
 \author{Anonymous Authors}
 \date{}
 
 \begin{document}
 \maketitle
 \begin{abstract}
-We introduce CanyonBench-Trace, a procedural benchmark that uses a calibrated
-virtual camera and exact projected map masks to measure feature acuity,
-localization, and causal use of visual evidence for water, major roads, and
-cultivated fields. The design contains 120 independent sites, 960 clean views,
-and a singly degraded subset spanning 3--24\,km AGL and two view geometries.
-Target, matched-distractor, model-self-evidence, and control interventions
-separate oracle reliance from the faithfulness of a model's claimed evidence.
-\TBD{Insert only frozen headline results and CAVE reliability/coverage effect.}
+A vision--language model deployed on an aerial platform can answer correctly, point
+at a plausible region, and still not be using the pixels it cites. Accuracy cannot
+separate these cases, and neither can localization overlap. We introduce
+CanyonBench-Trace, a procedural benchmark that measures whether an answer
+\emph{causally depends} on the visual evidence the model itself names. A
+deterministic virtual camera over orthoimagery emits each view together with
+pixel-exact feature masks and camera geometry, so counterfactual interventions can
+be applied to the true feature, to a covariate-matched irrelevant region, and to
+the cells the model verbalizes---using only repeated black-box queries, so
+proprietary and open-weight systems are evaluated identically. Because the camera
+fixes ground sample distance, the benchmark also contains an optically grounded
+hallucination test: features that are mapped and confirmed at low altitude become
+physically unresolvable at float altitude in the same scene, so a positive answer
+there is ungrounded by imaging geometry rather than by annotator judgment. We
+report presence accuracy, localization, and causal reliance as three distinct
+quantities across 120 independent sites and 960 views spanning 3--24\,km, together
+with per-model acuity thresholds, selective-risk frontiers, and CAVE, a
+training-free black-box wrapper that converts unfaithful positives into
+abstentions at a measured coverage and inference-call cost.
+\TBD{Insert only frozen headline results and the CAVE reliability/coverage effect.}
 \end{abstract}
 
 \input{sections/introduction}
