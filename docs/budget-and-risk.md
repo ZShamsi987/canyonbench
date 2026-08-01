@@ -8,8 +8,10 @@ line. The hardware split itself is documented in
 
 ## Call volume and predicted spend
 
-Only API-reached models cost cash. Self-served models run on credited GPU
-capacity, so they take the full three-operator Tier B; **metered models take the
+Only API-reached models cost cash. The 32B and 235B Qwen models are API-reached
+because neither fits the 40 GB card available in the filesystem's region; see
+[compute-and-storage.md](compute-and-storage.md). Self-served models run on
+credited GPU capacity, so they take the full three-operator Tier B; **metered models take the
 primary operator only**, because three operators x six named cells x four
 sequences is 72 paid calls per Tier-B view against the ~16 calls/query this
 budget is registered at. O2/O3 evidence for the metered models comes from the
@@ -38,8 +40,9 @@ At 1,400 input and 80 output tokens per call:
 | `openai/gpt-5.6-sol` | 5.00 | 30.00 | $0.0094 | $79.71 | $61.66 |
 | `anthropic/claude-opus-5` | 5.00 | 25.00 | $0.0090 | $76.32 | $59.04 |
 | `google/gemini-3.1-pro-preview` | 2.00 | 12.00 | $0.0038 | $31.88 | $24.66 |
+| `qwen/qwen3-vl-32b-instruct` | 0.104 | 0.416 | $0.0002 | $1.52 | $1.17 |
 | `qwen/qwen3-vl-235b-a22b-instruct` | 0.20 | 0.88 | $0.0004 | $2.97 | $2.30 |
-| **Total** | | | | **$191** | **$148** |
+| **Total** | | | | **$192** | **$149** |
 
 The spread is driven entirely by how many evidence cells models actually name:
 K=6 is the cap, K=3 a plausible average. Both fit the $220 cash allocation, and
@@ -71,7 +74,7 @@ carries the per-model rates frozen from the OpenRouter catalogue on 2026-07-29.
 |---|---|---|---|
 | OpenRouter API credits | $180 | Cash | All API inference across Tiers A–C plus robustness re-runs, with headroom for premium-tier models and one complete re-run after a defect |
 | Contingency | $40 | Cash | Provider price changes, an additional proprietary model, extended CAVE coverage |
-| GPU compute | $0 | Lambda credit ($400) | All open-weight and RS inference; ~15 GPU-hours projected |
+| GPU compute | $0 | Lambda credit ($400) | 1x A100 40 GB in us-east-1 at $1.99/hr; ~15 GPU-hours ≈ $30 of the $340 |
 | Persistent storage | $0 | Lambda credit ($400) | Weights, frozen dataset bundle, results and logs; ~200 GB |
 | CPU compute and source tiles | $0 | Adroit allocation | Acquisition, generation, gates, interventions, analysis; tiles never leave Adroit |
 | Tooling, hosting, DOI | $0 | Open access | vLLM, OpenCV, rasterio, GDAL, Hugging Face, Zenodo |

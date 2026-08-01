@@ -49,14 +49,19 @@ records the partitions and wall-time limits your account actually has. Send me
 that section: the jobs are already chunked to fit a 4-hour ceiling, and if your
 limit is higher I can collapse them into fewer, faster submissions.
 
-### 0.2 Lambda
+### 0.2 Lambda — **do this only once the dataset is built and audited**
 
-Launch **1× H100 80 GB PCIe ($3.29/hr)**. It is the cheapest card that holds the
-32B model in bfloat16, so the whole roster runs in one session. SXM5 ($4.29/hr)
-is the same capability at a higher rate if PCIe capacity is gone.
+An idle instance still bills, so launch it at Stage 2A, not before.
+
+Launch **`gpu_1x_a100_sxm4` in us-east-1 ($1.99/hr)** and attach the
+**`CanyonBench`** filesystem. A Lambda filesystem mounts only in its own region
+and us-east-1 has no H100, so this is the only single-GPU card that can see your
+data — and it is also the cheapest Lambda offers anywhere. It serves the 8B,
+EarthDial, and the detector; the 32B and 235B are reached over the API because
+neither fits 40 GB in bfloat16.
 
 Budget: $40 of the $400 credit is reserved for storage, leaving **$340 for GPU** —
-about 103 hours at the PCIe rate against a 15-hour projection.
+about 171 hours at $1.99/hr against a 15-hour projection.
 
 ```bash
 ssh ubuntu@<lambda-ip>
@@ -214,7 +219,7 @@ bash scripts/check.sh
 | # | Item | When | Why it cannot be automated |
 |---|---|---|---|
 | 1 | `OPENROUTER_API_KEY` exported on Adroit | Stage 0 | Credential; never committed |
-| 2 | Lambda instance launched, ≥80 GB card | Stage 0.2 | Costs credit; your call which type |
+| 2 | Lambda `gpu_1x_a100_sxm4` in us-east-1 + `CanyonBench` filesystem | Stage 2A | Costs credit; launch only when the dataset is ready |
 | 3 | Adroit wall-time limit from the preflight output | Stage 0.1 | Determines whether jobs need re-chunking |
 | 4 | Two auditors complete `audit.csv` | Stage 1.5 | Human judgment is the fourth extinction criterion |
 | 5 | Approve the measured price projection | Stage 2B | Spends real money |
@@ -266,11 +271,13 @@ tokens for exactly these five, then paste them to me:
 | `openai/gpt-5.6-sol` | 5.00 | 30.00 | $79.71 |
 | `anthropic/claude-opus-5` | 5.00 | 25.00 | $76.32 |
 | `google/gemini-3.1-pro-preview` | 2.00 | 12.00 | $31.88 |
+| `qwen/qwen3-vl-32b-instruct` | 0.104 | 0.416 | $1.52 |
 | `qwen/qwen3-vl-235b-a22b-instruct` | 0.20 | 0.88 | $2.97 |
-| | | **predicted total** | **$191** |
+| | | **predicted total** | **$192** |
 
 That is the worst case, where every query names the full six-cell budget; at a
-more realistic three cells it is about $148. Both fit the $220 allocation.
+more realistic three cells it is about $149. Both fit the $220 allocation.
+The two Qwen rates matter least but are the least certain — check them too.
 
 Also confirm each slug still exists and still accepts image input plus structured
 output. If one is gone, tell me the replacement and I will update the roster and

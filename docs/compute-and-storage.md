@@ -48,24 +48,28 @@ Selection is driven by VRAM per GPU, not aggregate GPU count: the workload is
 request-parallel, so throughput scales through batching on one device, and extra
 devices help only when a single model exceeds one card.
 
-| Configuration | Rate | Verdict | Notes |
+**The region decides the card.** A Lambda filesystem mounts only in its own
+region, the project filesystem `CanyonBench` lives in **us-east-1**, and Lambda
+offers no H100 there at all. Verified against the live API:
+
+| Configuration | Rate | In us-east-1 | Verdict |
 |---|---|---|---|
-| 1× H100 80 GB PCIe | **$3.29/hr** | **Primary** | Cheapest 80 GB card; serves the entire roster including the 32B in one session |
-| 1× H100 80 GB SXM5 | $4.29/hr | Secondary | Same capability, higher rate; take it when PCIe capacity is unavailable |
-| 1× A100 40 GB SXM4 | — | Fallback | Cannot hold the 32B in bfloat16; needs a second session on an 80 GB card |
-| 1× A10 24 GB PCIe | — | Fallback | 7–8B and detector only, with reduced batch concurrency |
-| 2× H100 80 GB SXM5 | — | Not required | Only if a 70B-class model is added |
-| 4× H100, 8× A100 (40 or 80 GB) | — | Not recommended | Exceeds requirements; cannot be used concurrently without restructuring |
-| 8× Tesla V100 16 GB | — | **Excluded** | Volta lacks native bfloat16; violates the precision constraint |
+| 1× A100 40 GB SXM4 | **$1.99/hr** | **yes** | **Registered selection** — the only single-GPU card in region, and the cheapest anywhere |
+| 1× H100 80 GB PCIe | $3.29/hr | no (us-west-3) | Unavailable in region |
+| 1× H100 80 GB SXM5 | $4.29/hr | no (us-south-2/3, us-southeast-1) | Unavailable in region |
+| 1× A10 24 GB PCIe | — | no | Fallback for 7–8B and the detector only |
+| 8× A100 80 GB SXM4 | $22.32/hr | yes | Not recommended: pays for eight devices to use one |
+| 8× Tesla V100 16 GB | — | — | **Excluded** — Volta lacks native bfloat16 |
 
-**Take the H100 80 GB PCIe.** It is the cheapest card that holds
-`qwen/qwen3-vl-32b-instruct` in bfloat16, so the whole roster runs in one
-session with no second launch and no instance-type juggling.
+**Launch `gpu_1x_a100_sxm4` in us-east-1 with the `CanyonBench` filesystem
+attached.** It holds the 8B model (~16 GB), EarthDial (~8 GB), and the detector
+(<8 GB) with KV-cache headroom; at 40 GB the profile is `max_model_len` 16384,
+`max_num_seqs` 64.
 
-`qwen/qwen3-vl-235b-a22b-instruct` needs roughly 470 GB in bfloat16, outside the
-registered instance plan, so the largest open-weight size level is reached over
-OpenRouter instead of self-served. Its published rates are about 2 percent of the
-proprietary rates.
+Two Qwen sizes exceed a 40 GB card in bfloat16 — the 32B needs ~68 GB and the
+235B roughly 470 GB — so both are reached over OpenRouter instead. Together they
+add about $4.50 to the bill against $1.30/hr saved versus an H100, and the three
+open-weight size levels stay intact.
 
 ## Credit position
 
@@ -75,13 +79,14 @@ survive to the end of the project) and **$340 for GPU time**.
 
 | Card | Rate | Hours $340 buys | Projected hours | Headroom |
 |---|---|---|---|---|
-| H100 80 GB PCIe | $3.29/hr | ~103 h | 15 h | ~6.9× |
-| H100 80 GB SXM5 | $4.29/hr | ~79 h | 15 h | ~5.3× |
+| **A100 40 GB SXM4 (registered)** | **$1.99/hr** | **~171 h** | 15 h | **~11×** |
+| H100 80 GB PCIe (out of region) | $3.29/hr | ~103 h | 15 h | ~6.9× |
 
 Projected GPU consumption is approximately 15 GPU-hours: 2 hours of setup and
 weight retrieval, 6 hours for the roster across Tiers A–C, 2 hours of robustness
-re-runs, and 5 hours of defect-recovery buffer. At the PCIe rate that is about
-**$49 of the $340**, so the binding constraint is engineering time, not compute.
+re-runs, and 5 hours of defect-recovery buffer. At the registered rate that is
+about **$30 of the $340**, so the binding constraint is engineering time, not
+compute.
 The split is encoded in `canyonbench.compute.gpu_budget`.
 
 The surplus is large enough to extend Tier B causal tracing from the 160-view
@@ -96,8 +101,8 @@ the roster is reached over HTTP, and each one is either:
 
 | Model | Server | Who starts it | URL |
 |---|---|---|---|
-| 3 proprietary + Qwen 235B | OpenRouter | nobody — it is a public API | `https://openrouter.ai/api/v1` |
-| Qwen 8B, Qwen 32B | vLLM, on your Lambda box | `run_open_weight.sh` | `http://127.0.0.1:8000/v1` |
+| 3 proprietary + Qwen 32B + Qwen 235B | OpenRouter | nobody — it is a public API | `https://openrouter.ai/api/v1` |
+| Qwen 8B | vLLM, on your Lambda box | `run_open_weight.sh` | `http://127.0.0.1:8000/v1` |
 | EarthDial | vLLM, on your Lambda box | `run_open_weight.sh` | `http://127.0.0.1:8001/v1` |
 | Detector reference | `serve_detector.py`, on your Lambda box | you, one command | `http://127.0.0.1:8010` |
 

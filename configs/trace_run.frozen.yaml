@@ -3,8 +3,10 @@
 # scripts pass as --dataset-dir/--output-dir, and in which slice of the roster
 # they execute, which they pass as --only-model.
 #
-#   Lambda GPU  : open_weight (served locally), remote_sensing, detector
-#   Adroit + API: proprietary and any model reached over OpenRouter
+#   Lambda GPU  : 1x A100 40 GB SXM4 in us-east-1, mounting the CanyonBench
+#                 filesystem. Serves the 8B, EarthDial, and the detector.
+#   Adroit + API: the three proprietary models plus the two Qwen sizes whose
+#                 bfloat16 weights exceed a 40 GB card.
 #
 # The defaults below are the Adroit/OpenRouter paths.
 dataset_dir: ../../CanyonBench-data/generated
@@ -68,15 +70,20 @@ models:
     supports_json_schema: true
     metered: false
 
+  # 32B needs ~68 GB in bfloat16. The project filesystem lives in us-east-1 and
+  # Lambda offers no 80 GB card there, so the middle size level is reached over
+  # the API. At ~2 percent of the proprietary rates this costs about $1.50.
+  # RECHECK these rates on the OpenRouter catalogue before the run.
   - id: qwen/qwen3-vl-32b-instruct
-    served_model_id: Qwen/Qwen3-VL-32B-Instruct
     benchmark_role: open_weight
-    provider: Qwen (self-served, vLLM)
-    adapter: *vllm_primary
+    provider: Qwen via OpenRouter
+    adapter: *openrouter
     image_max_side: 768
     supports_json_schema: true
     supports_pointing: true
-    metered: false
+    metered: true
+    input_per_million_usd: 0.104
+    output_per_million_usd: 0.416
 
   # 235B-A22B needs roughly 470 GB in bfloat16, which is outside the registered
   # single-card instance plan, so the largest open-weight size level is reached

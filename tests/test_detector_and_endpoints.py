@@ -174,17 +174,21 @@ def test_gpu_credit_budget_covers_the_projection_with_headroom() -> None:
         for instance in INSTANCES
         if instance.usd_per_hour is not None
     }
-    assert rates == {"1x H100 80 GB PCIe": 3.29, "1x H100 80 GB SXM5": 4.29}
+    assert rates == {
+        "1x A100 40 GB SXM4": 1.99,
+        "1x H100 80 GB PCIe": 3.29,
+        "1x H100 80 GB SXM5": 4.29,
+    }
 
-    pcie = gpu_budget(usd_per_hour=3.29)
-    assert pcie["fits"]
-    assert pcie["affordable_hours"] == pytest.approx(340 / 3.29, rel=1e-6)
-    assert pcie["projected_cost_usd"] == pytest.approx(15 * 3.29, rel=1e-6)
-    # Even the pricier card leaves several times the projected requirement.
+    registered = gpu_budget(usd_per_hour=1.99)
+    assert registered["fits"]
+    assert registered["affordable_hours"] == pytest.approx(340 / 1.99, rel=1e-6)
+    assert registered["projected_cost_usd"] == pytest.approx(15 * 1.99, rel=1e-6)
+    assert registered["headroom_multiple"] > 10
+    # Even the pricier cards would fit, but they are not offered in-region.
     sxm5 = gpu_budget(usd_per_hour=4.29)
     assert sxm5["fits"]
-    assert sxm5["headroom_multiple"] > 5
-    assert sxm5["affordable_hours"] < pcie["affordable_hours"]
+    assert sxm5["affordable_hours"] < registered["affordable_hours"]
     assert PROJECTED_GPU_HOURS == 15.0
 
     # A run long enough to exhaust the allocation is reported as not fitting.
@@ -194,14 +198,58 @@ def test_gpu_credit_budget_covers_the_projection_with_headroom() -> None:
         gpu_budget(usd_per_hour=0)
 
 
-def test_h100_is_the_registered_primary_and_serves_every_planned_class() -> None:
-    from canyonbench.compute import admissible_instances
+def test_registered_instance_is_the_only_one_offered_in_the_filesystem_region() -> None:
+    """The filesystem is region-locked, so the region picks the card."""
 
-    planned = ["vlm_7_8b", "vlm_12_14b", "vlm_26_34b", "detector_or_segmenter"]
-    rows = {row["instance"]: row for row in admissible_instances(planned)}
-    assert rows["1x H100 80 GB PCIe"]["verdict"] == "primary"
-    assert rows["1x H100 80 GB PCIe"]["unserved"] == []
-    assert rows["1x H100 80 GB SXM5"]["verdict"] == "secondary"
-    # The 40 GB A100 is now a fallback precisely because it cannot hold the 32B.
-    assert rows["1x A100 40 GB SXM4"]["verdict"] == "fallback"
-    assert "vlm_26_34b" in rows["1x A100 40 GB SXM4"]["unserved"]
+    from canyonbench.compute import (
+        LAMBDA_FILESYSTEM,
+        LAMBDA_REGION,
+        REGISTERED_INSTANCE,
+        admissible_instances,
+    )
+
+    assert (LAMBDA_FILESYSTEM, LAMBDA_REGION) == ("CanyonBench", "us-east-1")
+    assert REGISTERED_INSTANCE == "1x A100 40 GB SXM4"
+
+    # What the A100 actually has to serve: everything except the 26-34B model,
+    # which is reached over the API instead.
+    self_served = ["vlm_7_8b", "detector_or_segmenter"]
+    rows = {row["instance"]: row for row in admissible_instances(self_served)}
+    a100 = rows[REGISTERED_INSTANCE]
+    assert a100["verdict"] == "primary"
+    assert a100["unserved"] == [], "the A100 must serve everything kept in-house"
+
+    # Both H100s are recorded as unavailable in-region rather than deleted, so
+    # the reason the cheaper card was chosen stays on the record.
+    for name in ("1x H100 80 GB PCIe", "1x H100 80 GB SXM5"):
+        assert rows[name]["verdict"] == "unavailable_in_region"
+
+    # And the reason the 32B left: it does not fit 40 GB in bfloat16.
+    with_32b = {row["instance"]: row for row in admissible_instances([*self_served, "vlm_26_34b"])}
+    assert "vlm_26_34b" in with_32b[REGISTERED_INSTANCE]["unserved"]
+
+
+def test_roster_splits_by_what_a_40gb_card_can_hold() -> None:
+    """Everything self-served must fit 40 GB; everything larger is priced."""
+
+    config = load_trace_run_config(ROOT / "configs" / "trace_run.frozen.yaml")
+    served = {m.id for m in config.models if not m.metered}
+    paid = {m.id for m in config.models if m.metered}
+
+    assert served == {
+        "qwen/qwen3-vl-8b-instruct",
+        "akshaydudhane/EarthDial_4B_RGB",
+        "canyonbench-independent-detector-v1",
+    }
+    # Both Qwen sizes that exceed 40 GB in bfloat16 are reached over the API.
+    assert {"qwen/qwen3-vl-32b-instruct", "qwen/qwen3-vl-235b-a22b-instruct"} <= paid
+    # The roster composition is unchanged by the move: still 3/3/1/1.
+    roles: dict[str, int] = {}
+    for model in config.models:
+        roles[str(model.benchmark_role)] = roles.get(str(model.benchmark_role), 0) + 1
+    assert roles == {"proprietary": 3, "open_weight": 3, "remote_sensing": 1, "detector": 1}
+    # Every paid model carries an explicit non-zero rate.
+    for model in config.models:
+        if model.metered:
+            assert (model.input_per_million_usd or 0) > 0
+            assert (model.output_per_million_usd or 0) > 0

@@ -16,6 +16,11 @@ from pathlib import Path
 from typing import Any, Final
 
 LAMBDA_ROOT: Final[Path] = Path("/lambda/canyonbench")
+# A Lambda filesystem only mounts in its own region, so the region of the
+# persistent filesystem decides which cards are reachable. The project
+# filesystem lives in us-east-1, which offers no H100 at all.
+LAMBDA_REGION: Final[str] = "us-east-1"
+LAMBDA_FILESYSTEM: Final[str] = "CanyonBench"
 
 # Quantization changes model behavior, and a benchmark whose subject is causal
 # faithfulness cannot report a quantized model under the named model's identity.
@@ -105,12 +110,15 @@ INSTANCES: Final[tuple[Instance, ...]] = (
         vcpu=30,
         ram_gib=200,
         ssd_tib=0.5,
-        verdict="fallback",
+        verdict="primary",
         assessment=(
-            "Serves the 7-8B and RS models with headroom but cannot hold the 32B "
-            "model in bfloat16, so it needs a second session on an 80 GB card."
+            "Registered selection: the only single-GPU card offered in us-east-1, "
+            "where the project filesystem lives, and the cheapest of any region. "
+            "Serves the 7-8B, RS, and detector models with KV-cache headroom. The "
+            "26-34B model does not fit 40 GB in bfloat16 and is reached over the "
+            "API instead."
         ),
-        usd_per_hour=None,
+        usd_per_hour=1.99,
     ),
     Instance(
         name="1x H100 80 GB PCIe",
@@ -119,10 +127,11 @@ INSTANCES: Final[tuple[Instance, ...]] = (
         vcpu=26,
         ram_gib=200,
         ssd_tib=1.0,
-        verdict="primary",
+        verdict="unavailable_in_region",
         assessment=(
-            "Registered selection. Cheapest 80 GB card, so it serves the entire roster "
-            "including the 32B model in one session."
+            "Would hold the 32B locally, but Lambda offers no H100 in us-east-1, "
+            "and a filesystem cannot be mounted across regions. Taking it would "
+            "mean a second filesystem and re-uploading the dataset bundle."
         ),
         usd_per_hour=3.29,
     ),
@@ -133,10 +142,10 @@ INSTANCES: Final[tuple[Instance, ...]] = (
         vcpu=26,
         ram_gib=225,
         ssd_tib=2.8,
-        verdict="secondary",
+        verdict="unavailable_in_region",
         assessment=(
-            "Equivalent capability at a higher hourly rate; take it when PCIe "
-            "capacity is unavailable."
+            "Same capability as the PCIe variant at a higher rate, and also absent "
+            "from us-east-1."
         ),
         usd_per_hour=4.29,
     ),
@@ -355,6 +364,8 @@ LAMBDA_CREDIT_USD: Final[float] = 400.0
 LAMBDA_STORAGE_RESERVE_USD: Final[float] = 40.0
 LAMBDA_GPU_ALLOCATION_USD: Final[float] = 340.0
 PROJECTED_GPU_HOURS: Final[float] = 15.0
+# The registered card: 1x A100 40 GB SXM4 in us-east-1.
+REGISTERED_INSTANCE: Final[str] = "1x A100 40 GB SXM4"
 
 
 def gpu_budget(

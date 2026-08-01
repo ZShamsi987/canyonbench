@@ -63,6 +63,7 @@
 - Update the 235B rate to $0.20/$0.88 per million and record the predicted OpenRouter spend, $176 worst case and about $133 at three named cells.
 - Confine Adroit to two directories, refuse to operate on a checkout that is not this project, and never edit a shell profile.
 - Assert the clean-view lattice per site and in total, and record the 120 x 4 x 2 = 960 arithmetic in the dataset manifest.
+- Register the 1x A100 40 GB SXM4 in us-east-1 as the serving instance: the project filesystem is region-locked to us-east-1 and Lambda offers no H100 there, so the only single-GPU card in region is also the cheapest at $1.99/hr. The 32B moves to the API alongside the 235B because neither fits 40 GB in bfloat16; predicted spend $192 worst case, $149 likely.
 - Add a 40-view operator-agreement subset so metered models are also measured under O2 and O3: V3 correlates model rankings, and restricting paid models to O1 everywhere would have left that correlation over three credited models. Predicted spend $191 worst case, $148 at three named cells.
 
 ## 0.1.0 - 2026-07-21
