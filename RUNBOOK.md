@@ -263,23 +263,25 @@ tokens for exactly these five, then paste them to me:
 
 | Model id in the roster | Frozen input $/M | Frozen output $/M | Predicted spend |
 |---|---|---|---|
-| `openai/gpt-5.6-sol` | 5.00 | 30.00 | $73.70 |
-| `anthropic/claude-opus-5` | 5.00 | 25.00 | $70.56 |
-| `google/gemini-3.1-pro-preview` | 2.00 | 12.00 | $29.48 |
-| `qwen/qwen3-vl-235b-a22b-instruct` | 0.20 | 0.88 | $2.75 |
-| | | **predicted total** | **$176** |
+| `openai/gpt-5.6-sol` | 5.00 | 30.00 | $79.71 |
+| `anthropic/claude-opus-5` | 5.00 | 25.00 | $76.32 |
+| `google/gemini-3.1-pro-preview` | 2.00 | 12.00 | $31.88 |
+| `qwen/qwen3-vl-235b-a22b-instruct` | 0.20 | 0.88 | $2.97 |
+| | | **predicted total** | **$191** |
 
 That is the worst case, where every query names the full six-cell budget; at a
-more realistic three cells it is about $133. Both fit the $220 allocation.
+more realistic three cells it is about $148. Both fit the $220 allocation.
 
 Also confirm each slug still exists and still accepts image input plus structured
 output. If one is gone, tell me the replacement and I will update the roster and
 the decision log. The price pilot measures real token usage, but it cannot detect
 a stale *price*.
 
-**Two models are 82 percent of the bill.** If you want it lower, dropping either
-$5/M model saves about $70 and is descope-ladder step 6; say the word and I will
-make that cut explicitly rather than letting the cap abort mid-run.
+**Two models are 82 percent of the bill.** If a slug is retired and you need a
+replacement, the constraints are: a different vendor from the other two, image
+input, structured output, and a rate that keeps the total under $220 (anything at
+or below $5/M input and $30/M output does). Send me the candidate and its
+published rates and I will re-run the projection before it goes in the roster.
 
 ### Nothing else is needed
 

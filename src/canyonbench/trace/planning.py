@@ -76,6 +76,14 @@ def estimate_call_plan(
                 for operator, count in static_by_operator.items()
                 if operator in operators or operator == "inpaint"
             )
+            if model.metered:
+                # V3 subset: the non-primary operators on a slice of Tier B, so
+                # the rank correlation covers the paid models too.
+                extra_operators = credited_operators - metered_operators
+                per_view = 2 * len(config.interventions.fractions) * len(extra_operators)
+                breakdown["v3_operator_agreement_subset"] = (
+                    min(config.protocol.operator_agreement_views, len(tier_b)) * per_view
+                )
         if model.benchmark_role != "detector":
             if "B" in config.tiers:
                 # Worst case: every query names the full cell budget.

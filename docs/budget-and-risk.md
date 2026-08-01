@@ -23,10 +23,11 @@ Calls per paid model, from `trace plan-run` against the full 960/240 lattice:
 | Tier A screening (960 clean) | 960 |
 | Tier A degraded robustness | 80 |
 | Tier B oracle + distractor (O1, 4 fractions x 2 sequences x 160 views) | 1,280 |
+| V3 operator agreement (O2+O3 oracle+distractor on 40 views) | 640 |
 | Tier B self-evidence + controls (4 sequences x K x 160 views, worst case K=6) | 3,840 |
 | Tier C prompts and image controls (120 x 8) | 960 |
 | Tier C CAVE stages (120 x 6) | 720 |
-| **Per paid model** | **7,840** |
+| **Per paid model** | **8,480** |
 
 ### Predicted OpenRouter spend
 
@@ -34,15 +35,21 @@ At 1,400 input and 80 output tokens per call:
 
 | Model | $/M in | $/M out | $/call | Worst case (K=6) | Likely (K=3) |
 |---|---|---|---|---|---|
-| `openai/gpt-5.6-sol` | 5.00 | 30.00 | $0.0094 | $73.70 | $55.65 |
-| `anthropic/claude-opus-5` | 5.00 | 25.00 | $0.0090 | $70.56 | $53.28 |
-| `google/gemini-3.1-pro-preview` | 2.00 | 12.00 | $0.0038 | $29.48 | $22.26 |
-| `qwen/qwen3-vl-235b-a22b-instruct` | 0.20 | 0.88 | $0.0004 | $2.75 | $2.07 |
-| **Total** | | | | **$176** | **$133** |
+| `openai/gpt-5.6-sol` | 5.00 | 30.00 | $0.0094 | $79.71 | $61.66 |
+| `anthropic/claude-opus-5` | 5.00 | 25.00 | $0.0090 | $76.32 | $59.04 |
+| `google/gemini-3.1-pro-preview` | 2.00 | 12.00 | $0.0038 | $31.88 | $24.66 |
+| `qwen/qwen3-vl-235b-a22b-instruct` | 0.20 | 0.88 | $0.0004 | $2.97 | $2.30 |
+| **Total** | | | | **$191** | **$148** |
 
 The spread is driven entirely by how many evidence cells models actually name:
 K=6 is the cap, K=3 a plausible average. Both fit the $220 cash allocation, and
 the harness aborts on the first request that would breach it.
+
+The V3 line exists because operator agreement correlates model *rankings* across
+operators. Restricting metered models to O1 everywhere would leave that
+correlation computed over three credited models, which is too few points to
+support a required protocol element; 40 views of O2/O3 restores it to the full
+roster for $14.
 
 **Two models carry 82 percent of the cost.** If the projection needs to come
 down, in order of preference: drop one of the two $5/M models (descope ladder

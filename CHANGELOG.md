@@ -63,6 +63,7 @@
 - Update the 235B rate to $0.20/$0.88 per million and record the predicted OpenRouter spend, $176 worst case and about $133 at three named cells.
 - Confine Adroit to two directories, refuse to operate on a checkout that is not this project, and never edit a shell profile.
 - Assert the clean-view lattice per site and in total, and record the 120 x 4 x 2 = 960 arithmetic in the dataset manifest.
+- Add a 40-view operator-agreement subset so metered models are also measured under O2 and O3: V3 correlates model rankings, and restricting paid models to O1 everywhere would have left that correlation over three credited models. Predicted spend $191 worst case, $148 at three named cells.
 
 ## 0.1.0 - 2026-07-21
 

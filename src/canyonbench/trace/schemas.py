@@ -598,6 +598,11 @@ class TraceProtocolConfig(StrictModel):
     # models come from the separate robustness re-run instead.
     causal_operators: list[InterventionOperator] = Field(default=["blur", "texture", "frequency"])
     metered_causal_operators: list[InterventionOperator] = Field(default=["blur"])
+    # V3 correlates model *rankings* across operators, so it needs every model
+    # measured under every operator or the correlation is over too few points to
+    # mean anything. Metered models therefore run the non-primary operators on
+    # this many Tier-B views: enough for a ranking, small enough to afford.
+    operator_agreement_views: Annotated[int, Field(ge=0)] = 40
     # V3/V4 sweep every grid and cell budget under every operator, which is tens
     # of thousands of calls per model. It answers a question about the metric
     # rather than about any one vendor, so it runs where compute is credited.

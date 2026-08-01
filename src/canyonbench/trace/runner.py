@@ -395,6 +395,17 @@ def run_trace(
     tier_b = stratified_select(
         clean, min(config.protocol.causal_core_views, len(clean)), seed=config.protocol.seed + 1
     )
+    # V3 needs every model ranked under every operator. Metered models run the
+    # non-primary operators on this subset of Tier B so the rank correlation
+    # covers the whole roster rather than only the credited models.
+    agreement_views = {
+        f"{row['site_id']}/{row['view_id']}"
+        for row in stratified_select(
+            tier_b,
+            min(config.protocol.operator_agreement_views, len(tier_b)),
+            seed=config.protocol.seed + 5,
+        )
+    }
     tier_c = stratified_select(
         clean, min(config.protocol.prompt_cave_views, len(clean)), seed=config.protocol.seed + 2
     )
@@ -493,12 +504,19 @@ def run_trace(
                 interventions = (
                     read_json(intervention_manifest) if intervention_manifest.exists() else []
                 )
+                # On the agreement subset a metered model takes every registered
+                # operator; elsewhere it takes the primary operator only.
+                view_operators = (
+                    tuple(config.protocol.causal_operators)
+                    if f"{row['site_id']}/{row['view_id']}" in agreement_views
+                    else operators
+                )
                 for item in interventions:
                     if not item.get("accepted") or (
                         item["operator"] == "inpaint" and "inpainting" not in config.analyses
                     ):
                         continue
-                    if item["operator"] != "inpaint" and item["operator"] not in operators:
+                    if item["operator"] != "inpaint" and item["operator"] not in view_operators:
                         continue
                     image = Path(str(item["image_path"]))
                     if not image.is_absolute():

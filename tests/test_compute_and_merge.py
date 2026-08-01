@@ -407,3 +407,74 @@ def test_chunked_acquisition_manifests_merge_into_one_cohort(tmp_path) -> None:
         merge_site_manifests(output, [])
     with pytest.raises(DataValidationError, match="missing chunk"):
         merge_site_manifests(output, [tmp_path / "absent.yaml"])
+
+
+def test_operator_agreement_subset_keeps_v3_over_the_whole_roster(tmp_path) -> None:
+    """V3 correlates model rankings, so every model needs O2/O3 somewhere."""
+
+    from canyonbench.trace.config import load_run_config_for_host
+    from canyonbench.trace.planning import estimate_call_plan
+
+    dataset = tmp_path / "generated"
+    dataset.mkdir()
+    rows: list[dict[str, Any]] = []
+    for index in range(120):
+        site = f"site_{index + 1:04d}"
+        target = ["water", "road", "field"][index % 3]
+        group = (
+            "flight_corridor" if index < 60 else ("regional_ood" if index < 96 else "cross_biome")
+        )
+        for altitude in ("a3km", "b8km", "c16km", "d24km"):
+            for geometry in ("nadir", "oblique"):
+                view = f"view_{altitude}_{geometry}"
+                rows.append(
+                    {
+                        "site_id": site,
+                        "view_id": view,
+                        "variant": "clean",
+                        "split": "test",
+                        "group": group,
+                        "target_class": target,
+                        "case_type": "positive" if index % 2 else "negative",
+                        "longitude": -111.5,
+                        "latitude": 36.7,
+                        "image_path": f"{site}/{view}/rgb.png",
+                        "manifest_path": f"{site}/{view}/view_manifest.json",
+                    }
+                )
+    (dataset / "index.json").write_text(json.dumps(rows), encoding="utf-8")
+    for row in rows:
+        directory = dataset / row["site_id"] / row["view_id"] / "interventions"
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "manifest.json").write_text(
+            json.dumps(
+                [
+                    {"operator": op, "sequence": seq, "fraction": fraction, "accepted": True}
+                    for op in ("blur", "texture", "frequency", "inpaint")
+                    for seq in ("oracle_deletion", "distractor_deletion")
+                    for fraction in (0.25, 0.5, 0.75, 1.0)
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+    config = load_run_config_for_host(
+        ROOT / "configs" / "trace_run.frozen.yaml",
+        dataset_dir=dataset,
+        output_dir=tmp_path / "run",
+    )
+    plan = estimate_call_plan(config)
+    paid = plan["breakdown_by_model"]["openai/gpt-5.6-sol"]
+    free = plan["breakdown_by_model"]["qwen/qwen3-vl-8b-instruct"]
+
+    # 40 views x 2 non-primary operators x 2 sequences x 4 fractions.
+    assert paid["v3_operator_agreement_subset"] == 640
+    # A credited model already runs every operator, so it needs no subset.
+    assert "v3_operator_agreement_subset" not in free
+    assert free["tier_b_oracle_and_distractor"] == 3 * paid["tier_b_oracle_and_distractor"]
+
+    cost = plan["cost_projection_usd"]
+    assert cost["nominal_fits_cost_cap"], "the registered plan must fit the cash cap"
+    assert 150 <= cost["nominal_usd"] <= 220, cost["nominal_usd"]
+    # The whole roster is priced, not just the proprietary vendors.
+    assert len(cost["by_model"]) == 4

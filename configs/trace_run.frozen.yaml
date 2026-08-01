@@ -150,6 +150,9 @@ protocol:
   # the metered models comes from the robustness re-run.
   causal_operators: [blur, texture, frequency]
   metered_causal_operators: [blur]
+  # V3 correlates model rankings across operators, so every model needs O2/O3
+  # somewhere. Metered models take them on this many Tier-B views.
+  operator_agreement_views: 40
   sensitivity_on_metered_models: false
 
 interventions:
