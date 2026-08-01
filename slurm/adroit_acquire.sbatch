@@ -10,9 +10,16 @@
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 #
+# DO NOT USE ON ADROIT. Adroit compute nodes have no outbound network: DNS does
+# not resolve and TCP 443 is blocked, with no proxy. Verified by direct probe.
+# Use scripts/adroit/acquire_login.sh instead, which runs the same commands on
+# the login node where the network exists.
+#
+# This file is retained for clusters whose compute nodes do have egress.
+#
 # D3-D4: discover candidate sites and materialize every aligned source layer.
-# Network- and I/O-bound with no GPU utility. Source tiles (100-300 GB) stay on
-# Adroit for the whole project and are never transferred to Lambda.
+# Network- and I/O-bound with no GPU utility. Source tiles stay on the cluster
+# for the whole project and are never transferred to Lambda.
 #
 # Chunked into ten array tasks of under four hours each, two at a time, so the
 # job fits under any plausible wall-clock limit and stays polite to the upstream
