@@ -144,8 +144,7 @@ INSTANCES: Final[tuple[Instance, ...]] = (
         ssd_tib=2.8,
         verdict="unavailable_in_region",
         assessment=(
-            "Same capability as the PCIe variant at a higher rate, and also absent "
-            "from us-east-1."
+            "Same capability as the PCIe variant at a higher rate, and also absent from us-east-1."
         ),
         usd_per_hour=4.29,
     ),
