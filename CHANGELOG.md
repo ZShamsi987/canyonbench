@@ -59,6 +59,10 @@
 - Chunk source acquisition into resumable array tasks under four hours with a dependent cohort-freeze job, so the pipeline fits any Adroit wall-clock limit, and add `trace merge-sites`.
 - Add docs/AUDITOR-GUIDE.md: standalone instructions for the two objective auditors, who work before any model runs.
 - Reframe the paper for VLM4RWD: grounding, faithfulness, hallucination mitigation, and deployment reliability, with a compute and reproducibility appendix.
+- Restrict Tier B to the primary operator for metered models: three operators by six cells by four sequences was 72 paid calls per view against a registered ~16, projecting $407 against a $220 cap. Self-served models keep all three operators, and V3/V4 sweeps run only where compute is credited.
+- Update the 235B rate to $0.20/$0.88 per million and record the predicted OpenRouter spend, $176 worst case and about $133 at three named cells.
+- Confine Adroit to two directories, refuse to operate on a checkout that is not this project, and never edit a shell profile.
+- Assert the clean-view lattice per site and in total, and record the 120 x 4 x 2 = 960 arithmetic in the dataset manifest.
 
 ## 0.1.0 - 2026-07-21
 

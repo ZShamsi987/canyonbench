@@ -6,7 +6,7 @@
 # intervention images move (20-40 GB).
 set -euo pipefail
 
-CANYONBENCH_DATA="${CANYONBENCH_DATA:-/scratch/network/$USER/CanyonBench-data}"
+CANYONBENCH_DATA="${CANYONBENCH_DATA:-/scratch/network/$USER/canyonbench-trace-data}"
 DATASET="${CANYONBENCH_DATASET_DIR:-$CANYONBENCH_DATA/generated}"
 LAMBDA_HOST="${LAMBDA_HOST:?set LAMBDA_HOST=ubuntu@<lambda-ip>}"
 LAMBDA_ROOT="${LAMBDA_ROOT:-/lambda/canyonbench}"

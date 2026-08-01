@@ -23,25 +23,31 @@ Steps marked **[BLOCKS]** stop the pipeline until a human acts. Steps marked
 
 ```bash
 ssh <you>@adroit.princeton.edu
-git clone https://github.com/ZShamsi987/canyonbench.git ~/CanyonBench
-bash ~/CanyonBench/scripts/adroit/bootstrap.sh
+git clone https://github.com/ZShamsi987/canyonbench.git ~/canyonbench-trace
+bash ~/canyonbench-trace/scripts/adroit/bootstrap.sh
 ```
 
 Then add to `~/.bashrc` exactly what the script prints, including:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...      # your key, never in the repo
-export CANYONBENCH_DATA=/scratch/network/$USER/CanyonBench-data
+export CANYONBENCH_HOME=$HOME/canyonbench-trace
+export CANYONBENCH_DATA=/scratch/network/$USER/canyonbench-trace-data
 export CANYONBENCH_DATASET_DIR=$CANYONBENCH_DATA/generated
 ```
 
 ```bash
-cd ~/CanyonBench && sbatch slurm/adroit_preflight.sbatch
+cd ~/canyonbench-trace && sbatch slurm/adroit_preflight.sbatch
 ```
 
-**[OUTPUT]** Read `logs/cb-preflight-*.out`. It records the partitions, GPU
-types, and maximum wall time your account actually has. If the wall-time limit is
-under 12 hours, tell me and I will re-chunk the acquisition and API jobs.
+Nothing above edits `~/.bashrc`, loads a module, or touches any other directory.
+The bootstrap **refuses to run** if the target path exists and is not this
+project. To remove the project later: `rm -rf ~/canyonbench-trace $CANYONBENCH_DATA`.
+
+**[OUTPUT]** Read `logs/cb-preflight-*.out`. It runs `qos` and `sacctmgr` and
+records the partitions and wall-time limits your account actually has. Send me
+that section: the jobs are already chunked to fit a 4-hour ceiling, and if your
+limit is higher I can collapse them into fewer, faster submissions.
 
 ### 0.2 Lambda
 
@@ -72,7 +78,10 @@ lives on the persistent filesystem.
 Nothing here touches a GPU or spends money.
 
 ```bash
-cd ~/CanyonBench
+cd ~/canyonbench-trace
+
+# All of this writes to exactly two directories: ~/canyonbench-trace (the
+# checkout) and $CANYONBENCH_DATA. Nothing else on Adroit is touched.
 
 # 1.1 Acquire sources: 10 array tasks under 4 h each, 2 at a time
 ACQUIRE=$(sbatch --parsable slurm/adroit_acquire.sbatch)
@@ -212,28 +221,39 @@ bash scripts/check.sh
 | 6 | Start the detector service (one command, provided) | Stage 2A | See below |
 | 7 | Confirm the OpenRouter prices are still current | Stage 2B | See below |
 
-### On item 6 — the two services
+### On item 6 — endpoints, in plain terms
 
-Both are handled. You do not need to build anything:
+**An endpoint is not a service you sign up for.** It is the URL of a server
+process running on your own Lambda box. There are only four kinds in this
+project, and three of them start themselves:
 
-- **Non-language detector.** `scripts/lambda/serve_detector.py` is a complete
-  implementation. Run `python scripts/lambda/serve_detector.py --port 8010 &`
-  inside the Lambda session before `run_open_weight.sh`.
-- **EarthDial.** `run_open_weight.sh` starts it with plain vLLM. If it fails the
-  health check it needs a bespoke wrapper, and the script says so and stops.
+| What | Who starts it | URL |
+|---|---|---|
+| The 3 proprietary models + Qwen 235B | nobody — public API | `https://openrouter.ai/api/v1` |
+| Qwen 8B / 32B | `run_open_weight.sh` | `http://127.0.0.1:8000/v1` |
+| EarthDial | `run_open_weight.sh` | `http://127.0.0.1:8001/v1` |
+| Detector reference | you, one command | `http://127.0.0.1:8010` |
 
-**To give me an endpoint, export one variable — never edit the roster:**
+**In the normal case you give me nothing.** Those URLs are already in the frozen
+roster, the scripts bind exactly those ports, and `127.0.0.1` is right because
+the driver runs on the same machine. The only thing you actually run is:
 
 ```bash
-export CANYONBENCH_ENDPOINT__CANYONBENCH_INDEPENDENT_DETECTOR_V1=http://127.0.0.1:8010
-export CANYONBENCH_ENDPOINT__AKSHAYDUDHANE_EARTHDIAL_4B_RGB=http://127.0.0.1:8001/v1
+python scripts/lambda/serve_detector.py --port 8010 &
+curl -s localhost:8010/health     # expect {"status": "ok", ...}
 ```
 
-The pattern is `CANYONBENCH_ENDPOINT__` + the model id upper-cased with every
-non-alphanumeric character replaced by `_`. Any model can be redirected this way.
+Tell me an address only if you start something *somewhere else* — a different
+port, or another host. Then export one variable rather than editing the roster:
 
-If a service cannot be stood up, the registered fallback is to drop that model
-and record the omission — the validator permits 2–3 open-weight and 1–2
+```bash
+export CANYONBENCH_ENDPOINT__CANYONBENCH_INDEPENDENT_DETECTOR_V1=http://127.0.0.1:9100
+```
+
+Pattern: `CANYONBENCH_ENDPOINT__` + model id upper-cased, non-alphanumerics → `_`.
+
+If a service cannot be stood up at all, the registered fallback is to drop that
+model and record the omission — the validator permits 2–3 open-weight and 1–2
 remote-sensing models. Tell me and I will make that cut explicitly.
 
 ### On item 7 — prices to verify
@@ -241,18 +261,25 @@ remote-sensing models. Tell me and I will make that cut explicitly.
 Open https://openrouter.ai/models and confirm the input/output rates per million
 tokens for exactly these five, then paste them to me:
 
-| Model id in the roster | Frozen input $/M | Frozen output $/M |
-|---|---|---|
-| `openai/gpt-5.6-sol` | 5.00 | 30.00 |
-| `anthropic/claude-opus-5` | 5.00 | 25.00 |
-| `google/gemini-3.1-pro-preview` | 2.00 | 12.00 |
-| `qwen/qwen3-vl-235b-a22b-instruct` | 0.21 | 1.90 |
-| *(check availability)* `akshaydudhane/EarthDial_4B_RGB` | — | not on OpenRouter; self-served |
+| Model id in the roster | Frozen input $/M | Frozen output $/M | Predicted spend |
+|---|---|---|---|
+| `openai/gpt-5.6-sol` | 5.00 | 30.00 | $73.70 |
+| `anthropic/claude-opus-5` | 5.00 | 25.00 | $70.56 |
+| `google/gemini-3.1-pro-preview` | 2.00 | 12.00 | $29.48 |
+| `qwen/qwen3-vl-235b-a22b-instruct` | 0.20 | 0.88 | $2.75 |
+| | | **predicted total** | **$176** |
 
-Also confirm each of the four is still listed under that exact slug and still
-accepts image input plus structured output. If a slug is gone, tell me the
-replacement and I will update the roster and the decision log. The price pilot
-measures real token usage, but it cannot detect a stale *price*.
+That is the worst case, where every query names the full six-cell budget; at a
+more realistic three cells it is about $133. Both fit the $220 allocation.
+
+Also confirm each slug still exists and still accepts image input plus structured
+output. If one is gone, tell me the replacement and I will update the roster and
+the decision log. The price pilot measures real token usage, but it cannot detect
+a stale *price*.
+
+**Two models are 82 percent of the bill.** If you want it lower, dropping either
+$5/M model saves about $70 and is descope-ladder step 6; say the word and I will
+make that cut explicitly rather than letting the cap abort mid-run.
 
 ### Nothing else is needed
 

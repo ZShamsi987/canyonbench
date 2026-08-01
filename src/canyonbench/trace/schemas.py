@@ -588,10 +588,31 @@ class TraceProtocolConfig(StrictModel):
     parse_retries: Annotated[int, Field(ge=0, le=10)] = 3
     seed: int = 2026
 
+    # Which suppression operators Tier B uses, split by who pays for the call.
+    #
+    # Self-served models run on credited GPU capacity, so they take all three
+    # primary operators and supply the V3 rank-agreement evidence directly.
+    # Metered models take the primary operator only: at three operators, six
+    # named cells, and four sequences, Tier B is 72 paid calls per view, against
+    # the ~16 calls/query the budget is registered at. O2 and O3 for metered
+    # models come from the separate robustness re-run instead.
+    causal_operators: list[InterventionOperator] = Field(default=["blur", "texture", "frequency"])
+    metered_causal_operators: list[InterventionOperator] = Field(default=["blur"])
+    # V3/V4 sweep every grid and cell budget under every operator, which is tens
+    # of thousands of calls per model. It answers a question about the metric
+    # rather than about any one vendor, so it runs where compute is credited.
+    sensitivity_on_metered_models: bool = False
+
     @model_validator(mode="after")
     def required_sensitivity_grid(self) -> TraceProtocolConfig:
         if self.grid_sizes != [4, 6, 8] or self.cell_budgets != [3, 6, 10]:
             raise ValueError("V4 requires grids 4/6/8 and cell budgets 3/6/10")
+        if not self.metered_causal_operators:
+            raise ValueError("metered models need at least the primary operator")
+        if "blur" not in self.metered_causal_operators:
+            raise ValueError("the primary operator O1 (blur) is required for every model")
+        if not set(self.metered_causal_operators) <= set(self.causal_operators):
+            raise ValueError("metered operators must be a subset of the registered operators")
         return self
 
 

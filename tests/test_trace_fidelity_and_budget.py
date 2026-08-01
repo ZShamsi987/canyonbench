@@ -521,3 +521,59 @@ def test_audit_csv_round_trip_supports_the_band_validation(tmp_path) -> None:
     )
     report = extinction_band_validation(load_audit(path), dataset)
     assert report["extinction_band"]["human_confirmation_rate"] == pytest.approx(1.0)
+
+
+def test_lattice_accounting_is_enforced_and_recorded(tmp_path) -> None:
+    """960 clean views is 120 sites x 4 altitudes x 2 geometries, and is checked."""
+
+    from test_trace_integration import make_site
+
+    from canyonbench.io import read_json
+    from canyonbench.trace.render import build_dataset
+
+    site, project = make_site(tmp_path)
+    dataset = build_dataset(project, [site], enforce_quota=False)
+    manifest = read_json(dataset / "dataset_manifest.json")
+    lattice = manifest["lattice"]
+
+    assert lattice["clean_views_per_site"] == 8
+    assert lattice["altitudes_agl_m"] == [3000.0, 8000.0, 16000.0, 24000.0]
+    assert sorted(lattice["geometries"]) == ["nadir", "oblique"]
+    assert lattice["sites"] * lattice["clean_views_per_site"] == manifest["clean_view_count"]
+    assert lattice["clean_view_arithmetic"] == (
+        "1 sites x 4 altitudes x 2 geometries = 8 clean views"
+    )
+
+    # The registered design scales the same arithmetic to the full cohort.
+    assert project.dataset.site_count == 120
+    assert project.dataset.clean_view_count == 960
+    assert 120 * lattice["clean_views_per_site"] == 960
+
+
+def test_registered_lattice_cannot_be_silently_shrunk() -> None:
+    """A config that renders fewer than 960 clean views must not validate."""
+
+    from canyonbench.trace.schemas import DatasetConfig
+
+    base = {
+        "source_root": Path("/tmp/sources"),
+        "output_root": Path("/tmp/generated"),
+        "site_manifest": Path("/tmp/sites.yaml"),
+    }
+    # Dropping a geometry halves the lattice to 480; dropping an altitude cuts
+    # it to 720. Both fail the view-count check before anything is rendered.
+    with pytest.raises(ValueError, match="960 clean views"):
+        DatasetConfig(**base, geometries=["nadir"])
+    with pytest.raises(ValueError, match="960 clean views"):
+        DatasetConfig(**base, altitudes_agl_m=[3000.0, 8000.0, 16000.0])
+    # Substituting an altitude keeps the count but breaks the registered ladder.
+    with pytest.raises(ValueError, match="3, 8, 16, and 24 km"):
+        DatasetConfig(**base, altitudes_agl_m=[3000.0, 8000.0, 16000.0, 20000.0])
+    # Shrinking the cohort is rejected before any view is rendered.
+    with pytest.raises(ValueError, match="120 sites"):
+        DatasetConfig(**base, quotas=[{"group": "flight_corridor", "per_class": 20}])
+
+    full = DatasetConfig(**base)
+    assert full.site_count == 120
+    assert full.clean_view_count == 960
+    assert full.degraded_view_count == 240

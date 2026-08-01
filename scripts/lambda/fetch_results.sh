@@ -5,7 +5,7 @@
 # nothing else needs to come back.
 set -euo pipefail
 
-CANYONBENCH_DATA="${CANYONBENCH_DATA:-/scratch/network/$USER/CanyonBench-data}"
+CANYONBENCH_DATA="${CANYONBENCH_DATA:-/scratch/network/$USER/canyonbench-trace-data}"
 LAMBDA_HOST="${LAMBDA_HOST:?set LAMBDA_HOST=ubuntu@<lambda-ip>}"
 LAMBDA_ROOT="${LAMBDA_ROOT:-/lambda/canyonbench}"
 DESTINATION="$CANYONBENCH_DATA/runs/lambda"

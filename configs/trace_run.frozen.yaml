@@ -89,8 +89,8 @@ models:
     image_max_side: 768
     supports_json_schema: true
     metered: true
-    input_per_million_usd: 0.21
-    output_per_million_usd: 1.9
+    input_per_million_usd: 0.20
+    output_per_million_usd: 0.88
 
   # Served on Lambda beside the Qwen models, on its own port because it needs a
   # schema-enforcing compatibility wrapper rather than a plain vLLM endpoint.
@@ -144,6 +144,13 @@ protocol:
   robustness_views: 80
   parse_retries: 3
   seed: 2026
+  # Self-served models take all three primary operators; metered models take the
+  # primary operator only, because three operators x six cells x four sequences
+  # is 72 paid calls per Tier-B view against a registered ~16. O2/O3 evidence for
+  # the metered models comes from the robustness re-run.
+  causal_operators: [blur, texture, frequency]
+  metered_causal_operators: [blur]
+  sensitivity_on_metered_models: false
 
 interventions:
   operators: [blur, texture, frequency, inpaint]

@@ -6,29 +6,49 @@ API inference alone. Coauthors perform the audits, so there is no annotation
 line. The hardware split itself is documented in
 [compute-and-storage.md](compute-and-storage.md).
 
-## Call volume
+## Call volume and predicted spend
 
-Open-weight and remote-sensing models are served on credited Lambda GPU capacity
-and incur no cash cost, so only the API-reached models are priced.
+Only API-reached models cost cash. Self-served models run on credited GPU
+capacity, so they take the full three-operator Tier B; **metered models take the
+primary operator only**, because three operators x six named cells x four
+sequences is 72 paid calls per Tier-B view against the ~16 calls/query this
+budget is registered at. O2/O3 evidence for the metered models comes from the
+robustness re-run, and V3/V4 sweeps run on the credited models
+(`sensitivity_on_metered_models: false`).
 
-| Tier | Views | Calls/query | Paid models | Paid calls |
-|---|---|---|---|---|
-| A screening | 960 | 1 | 3 | 2,880 |
-| B causal core | 160 | ~16 | 3 | 7,680 |
-| C prompts + CAVE | 120 | ~6 | 3 | 2,160 |
-| V3/V4 robustness re-runs | 80 | ~8 | 3 | 1,920 |
-| Retries, pilots, contingency | — | — | — | ~2,000 |
-| **Total** | | | | **~16,600** |
+Calls per paid model, from `trace plan-run` against the full 960/240 lattice:
 
-The 235B open-weight model is also reached over the API because its bfloat16
-weights exceed the registered single-card instance plan; at roughly 2 percent of
-the proprietary rates it adds little to the total.
+| Line | Calls |
+|---|---|
+| Tier A screening (960 clean) | 960 |
+| Tier A degraded robustness | 80 |
+| Tier B oracle + distractor (O1, 4 fractions x 2 sequences x 160 views) | 1,280 |
+| Tier B self-evidence + controls (4 sequences x K x 160 views, worst case K=6) | 3,840 |
+| Tier C prompts and image controls (120 x 8) | 960 |
+| Tier C CAVE stages (120 x 6) | 720 |
+| **Per paid model** | **7,840** |
 
-`trace plan-run` computes the real plan from the frozen dataset and roster
-instead of this table, and it reports a **worst case**: every cell a model names
-in Tier B/S3-S5 costs a call, so the self-evidence sequences scale with observed
-cell counts rather than the ~16 calls/query assumed above. Read
-`call_plan.json` before authorizing, not this page.
+### Predicted OpenRouter spend
+
+At 1,400 input and 80 output tokens per call:
+
+| Model | $/M in | $/M out | $/call | Worst case (K=6) | Likely (K=3) |
+|---|---|---|---|---|---|
+| `openai/gpt-5.6-sol` | 5.00 | 30.00 | $0.0094 | $73.70 | $55.65 |
+| `anthropic/claude-opus-5` | 5.00 | 25.00 | $0.0090 | $70.56 | $53.28 |
+| `google/gemini-3.1-pro-preview` | 2.00 | 12.00 | $0.0038 | $29.48 | $22.26 |
+| `qwen/qwen3-vl-235b-a22b-instruct` | 0.20 | 0.88 | $0.0004 | $2.75 | $2.07 |
+| **Total** | | | | **$176** | **$133** |
+
+The spread is driven entirely by how many evidence cells models actually name:
+K=6 is the cap, K=3 a plausible average. Both fit the $220 cash allocation, and
+the harness aborts on the first request that would breach it.
+
+**Two models carry 82 percent of the cost.** If the projection needs to come
+down, in order of preference: drop one of the two $5/M models (descope ladder
+step 6, saving ~$70), or halve `causal_core_views` from 160 to 80 for metered
+models only (saving ~$50 and widening the Tier B confidence intervals). Do not
+reduce Tier A.
 
 ## Cost model
 

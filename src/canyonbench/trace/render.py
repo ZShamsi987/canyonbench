@@ -326,6 +326,14 @@ def build_dataset(
     index_rows: list[dict[str, object]] = []
     gate_counts: Counter[str] = Counter()
 
+    # The clean-view lattice is exactly sites x altitudes x geometries. For the
+    # frozen v4 design that is 120 x 4 x 2 = 960, and the loop below is the only
+    # place views are created, so the count is a property of the loop rather
+    # than a target to be met. `clean_views_per_site` is asserted per site and
+    # the total is asserted once the loop finishes.
+    clean_views_per_site = len(config.altitudes_agl_m) * len(config.geometries)
+    expected_clean_views = len(sites) * clean_views_per_site
+
     for site in sorted(sites, key=lambda value: value.site_id):
         assert site.split is not None
         site_directory = output / site.site_id
@@ -503,14 +511,53 @@ def build_dataset(
                             ),
                         }
                     )
+        # Every site contributes the full lattice: 4 altitudes x 2 geometries.
+        # A site that silently rendered fewer views would quietly shrink the
+        # benchmark, so it is caught here rather than at validation time.
+        rendered = sum(
+            row["variant"] == "clean" and row["site_id"] == site.site_id for row in index_rows
+        )
+        if rendered != clean_views_per_site:
+            raise DataValidationError(
+                f"{site.site_id} produced {rendered} clean views; the registered "
+                f"lattice is {len(config.altitudes_agl_m)} altitudes x "
+                f"{len(config.geometries)} geometries = {clean_views_per_site}"
+            )
+
+    clean_view_count = sum(row["variant"] == "clean" for row in index_rows)
+    degraded_view_count = sum(row["variant"] == "degraded" for row in index_rows)
+    if clean_view_count != expected_clean_views:
+        raise DataValidationError(
+            f"generated {clean_view_count} clean views; expected "
+            f"{len(sites)} sites x {clean_views_per_site} = {expected_clean_views}"
+        )
+    if enforce_quota and clean_view_count != config.clean_view_count:
+        raise DataValidationError(
+            f"generated {clean_view_count} clean views against the registered "
+            f"{config.clean_view_count}; the site cohort and the lattice disagree"
+        )
     write_json(output / "index.json", index_rows)
     write_json(
         output / "dataset_manifest.json",
         {
             "schema_version": "4.0.0",
             "site_count": len(sites),
-            "clean_view_count": sum(row["variant"] == "clean" for row in index_rows),
-            "degraded_view_count": sum(row["variant"] == "degraded" for row in index_rows),
+            "clean_view_count": clean_view_count,
+            "degraded_view_count": degraded_view_count,
+            # The arithmetic behind the headline count, recorded so a reader of
+            # the manifest can check it without rerunning anything.
+            "lattice": {
+                "sites": len(sites),
+                "altitudes_agl_m": list(config.altitudes_agl_m),
+                "geometries": list(config.geometries),
+                "clean_views_per_site": clean_views_per_site,
+                "clean_view_arithmetic": (
+                    f"{len(sites)} sites x {len(config.altitudes_agl_m)} altitudes x "
+                    f"{len(config.geometries)} geometries = {clean_view_count} clean views"
+                ),
+                "degraded_view_target": config.degraded_view_count,
+                "degraded_views_per_site": (degraded_view_count / len(sites) if sites else 0),
+            },
             "extinction_view_count": sum(
                 row["variant"] == "clean" and row["case_type"] == "extinction" for row in index_rows
             ),

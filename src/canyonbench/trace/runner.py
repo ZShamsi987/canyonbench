@@ -479,6 +479,13 @@ def run_trace(
 
     for model in config.models:
         adapter = model_adapters[model.id]
+        # Paid and credited models take different operator sets in Tier B; see
+        # TraceProtocolConfig for why.
+        operators = tuple(
+            config.protocol.metered_causal_operators
+            if model.metered
+            else config.protocol.causal_operators
+        )
         if "B" in config.tiers:
             for row in tier_b:
                 view_directory = (config.dataset_dir / str(row["image_path"])).parent
@@ -490,6 +497,8 @@ def run_trace(
                     if not item.get("accepted") or (
                         item["operator"] == "inpaint" and "inpainting" not in config.analyses
                     ):
+                        continue
+                    if item["operator"] != "inpaint" and item["operator"] not in operators:
                         continue
                     image = Path(str(item["image_path"]))
                     if not image.is_absolute():
@@ -526,7 +535,7 @@ def run_trace(
                     )
                 )
                 if model.benchmark_role != "detector" and screening and screening.response:
-                    for operator in PRIMARY_OPERATORS:
+                    for operator in operators:
                         dynamic = materialize_self_sequences(
                             view_directory / "rgb.png",
                             screening.response,
@@ -713,7 +722,10 @@ def run_trace(
                             output=predictions_path,
                         )
 
-        if "sensitivity" in config.analyses and model.benchmark_role != "detector":
+        run_sensitivity = "sensitivity" in config.analyses and (
+            config.protocol.sensitivity_on_metered_models or not model.metered
+        )
+        if run_sensitivity and model.benchmark_role != "detector":
             for row in robustness:
                 image = config.dataset_dir / str(row["image_path"])
                 for grid_size in config.protocol.grid_sizes:
@@ -742,7 +754,9 @@ def run_trace(
                         )
                         if not initial.response or not initial.response.evidence_cells:
                             continue
-                        for operator in PRIMARY_OPERATORS:
+                        for sweep_operator in PRIMARY_OPERATORS:
+                            # V3/V4 always sweep all three operators: the whole
+                            # point of the check is cross-operator stability.
                             dynamic = materialize_self_sequences(
                                 image,
                                 initial.response,
@@ -752,10 +766,10 @@ def run_trace(
                                 / str(row["site_id"])
                                 / str(row["view_id"])
                                 / f"g{grid_size}_k{cell_budget}"
-                                / operator,
+                                / sweep_operator,
                                 grid_size=grid_size,
                                 cell_budget=cell_budget,
-                                operator=operator,
+                                operator=sweep_operator,
                                 seed=config.protocol.seed,
                             )
                             for item in dynamic:
@@ -769,7 +783,7 @@ def run_trace(
                                     grid_size=grid_size,
                                     cell_budget=cell_budget,
                                     fraction=float(item["step"]) / max(int(item["total_steps"]), 1),
-                                    operator=operator,
+                                    operator=sweep_operator,
                                 )
                                 _run_one(
                                     dynamic_request,

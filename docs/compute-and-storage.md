@@ -88,20 +88,35 @@ The surplus is large enough to extend Tier B causal tracing from the 160-view
 subset to the full 960-view lattice for the self-served models at no cash cost —
 that is the first upgrade to spend it on, ahead of anything that costs money.
 
-## Services and how to point the roster at them
+## Endpoints: what they are and where they come from
 
-Two roster entries are services rather than plain vLLM endpoints. Neither
-requires editing the frozen roster: **export one environment variable per
-service and the run picks it up.**
+**There is no third-party service to sign up for.** An "endpoint" here is just
+the URL of a server process running on your own Lambda machine. Every model in
+the roster is reached over HTTP, and each one is either:
+
+| Model | Server | Who starts it | URL |
+|---|---|---|---|
+| 3 proprietary + Qwen 235B | OpenRouter | nobody — it is a public API | `https://openrouter.ai/api/v1` |
+| Qwen 8B, Qwen 32B | vLLM, on your Lambda box | `run_open_weight.sh` | `http://127.0.0.1:8000/v1` |
+| EarthDial | vLLM, on your Lambda box | `run_open_weight.sh` | `http://127.0.0.1:8001/v1` |
+| Detector reference | `serve_detector.py`, on your Lambda box | you, one command | `http://127.0.0.1:8010` |
+
+**In the normal case you give me nothing.** Those URLs are already in
+`configs/trace_run.frozen.yaml`, the scripts start the servers on exactly those
+ports, and `127.0.0.1` is correct because the driver runs on the same machine.
+
+You only need to tell me an address if you start something somewhere else — a
+different port, or another host. Then export one variable instead of editing the
+roster:
 
 ```bash
-export CANYONBENCH_ENDPOINT__CANYONBENCH_INDEPENDENT_DETECTOR_V1=http://127.0.0.1:8010
-export CANYONBENCH_ENDPOINT__AKSHAYDUDHANE_EARTHDIAL_4B_RGB=http://127.0.0.1:8001/v1
+export CANYONBENCH_ENDPOINT__CANYONBENCH_INDEPENDENT_DETECTOR_V1=http://127.0.0.1:9100
 ```
 
-The variable name is `CANYONBENCH_ENDPOINT__` followed by the model id upper-cased
-with every non-alphanumeric character replaced by an underscore. Any model can be
-redirected this way; `canyonbench trace run` reports which overrides it applied.
+The variable name is `CANYONBENCH_ENDPOINT__` followed by the model id
+upper-cased with every non-alphanumeric character replaced by an underscore. Any
+model can be redirected this way, and `trace run` reports which overrides it
+applied.
 
 ### The non-language detector
 
@@ -114,14 +129,14 @@ own `id2label` at startup so a class can never be silently mis-mapped.
 
 ```bash
 python scripts/lambda/serve_detector.py --port 8010 &
-curl -s localhost:8010/health
+curl -s localhost:8010/health     # {"status": "ok", "labels": {...}}
 ```
 
 ### EarthDial
 
-`run_open_weight.sh` starts it on its configured port with plain vLLM. If it
-fails the health check, EarthDial needs its own schema-enforcing wrapper: start
-that by hand on any port, export the variable above, and rerun with
+`run_open_weight.sh` starts it on port 8001 with plain vLLM. If it fails the
+health check, EarthDial needs its own schema-enforcing wrapper: start that by
+hand on any port, export the variable above, and rerun with
 `--only-model akshaydudhane/EarthDial_4B_RGB`.
 
 If either service cannot be stood up, the roster validator accepts 2–3

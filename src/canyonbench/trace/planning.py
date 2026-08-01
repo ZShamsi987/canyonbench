@@ -28,14 +28,19 @@ def estimate_call_plan(
         min(config.protocol.causal_core_views, len(clean)),
         seed=config.protocol.seed + 1,
     )
+    # Tier B costs differ by who pays: metered models take the primary operator
+    # only, self-served models take all three. The plan therefore has to be
+    # built per model rather than shared.
+    metered_operators = set(config.protocol.metered_causal_operators)
+    credited_operators = set(config.protocol.causal_operators)
+
     common: dict[str, int] = {}
-    vlm_only: dict[str, int] = {}
     if "A" in config.tiers:
         common["tier_a_clean"] = min(config.protocol.screening_views, len(clean))
         common["tier_a_degraded_robustness"] = min(config.protocol.robustness_views, len(degraded))
+
+    static_by_operator: dict[str, int] = {}
     if "B" in config.tiers:
-        static = 0
-        dynamic_views = len(tier_b)
         for row in tier_b:
             manifest = (
                 (config.dataset_dir / str(row["image_path"])).parent
@@ -44,32 +49,46 @@ def estimate_call_plan(
             )
             if not manifest.exists():
                 continue
-            records = read_json(manifest)
-            static += sum(
-                bool(record.get("accepted"))
-                and (record["operator"] != "inpaint" or "inpainting" in config.analyses)
-                for record in records
-            )
-        common["tier_b_oracle_and_distractor"] = static
-        vlm_only["tier_b_self_and_controls_max"] = dynamic_views * 4 * 6 * 3
-    if "C" in config.tiers:
-        tier_c_count = min(config.protocol.prompt_cave_views, len(clean))
-        vlm_only["tier_c_prompts_and_image_controls"] = tier_c_count * 8
-        vlm_only["tier_c_cave_stages_max"] = tier_c_count * 6
-    if "sensitivity" in config.analyses:
-        robustness_count = min(config.protocol.robustness_views, len(clean))
-        calls_per_view = sum(
-            1 + 4 * cell_budget * 3
-            for _grid_size in config.protocol.grid_sizes
-            for cell_budget in config.protocol.cell_budgets
-        )
-        vlm_only["v4_grid_k_sensitivity_max"] = robustness_count * calls_per_view
+            for record in read_json(manifest):
+                if not record.get("accepted"):
+                    continue
+                operator = str(record["operator"])
+                if operator == "inpaint" and "inpainting" not in config.analyses:
+                    continue
+                static_by_operator[operator] = static_by_operator.get(operator, 0) + 1
+
+    tier_c_count = min(config.protocol.prompt_cave_views, len(clean)) if "C" in config.tiers else 0
+    robustness_count = min(config.protocol.robustness_views, len(clean))
+    sensitivity_calls_per_view = sum(
+        1 + 4 * cell_budget * len(config.protocol.causal_operators)
+        for _grid_size in config.protocol.grid_sizes
+        for cell_budget in config.protocol.cell_budgets
+    )
+
     breakdown_by_model: dict[str, dict[str, int]] = {}
     per_model: dict[str, int] = {}
     for model in config.models:
         breakdown = dict(common)
+        operators = metered_operators if model.metered else credited_operators
+        if "B" in config.tiers:
+            breakdown["tier_b_oracle_and_distractor"] = sum(
+                count
+                for operator, count in static_by_operator.items()
+                if operator in operators or operator == "inpaint"
+            )
         if model.benchmark_role != "detector":
-            breakdown.update(vlm_only)
+            if "B" in config.tiers:
+                # Worst case: every query names the full cell budget.
+                breakdown["tier_b_self_and_controls_max"] = len(tier_b) * 4 * 6 * len(operators)
+            if "C" in config.tiers:
+                breakdown["tier_c_prompts_and_image_controls"] = tier_c_count * 8
+                breakdown["tier_c_cave_stages_max"] = tier_c_count * 6
+            if "sensitivity" in config.analyses and (
+                config.protocol.sensitivity_on_metered_models or not model.metered
+            ):
+                breakdown["v4_grid_k_sensitivity_max"] = (
+                    robustness_count * sensitivity_calls_per_view
+                )
         breakdown_by_model[model.id] = breakdown
         per_model[model.id] = sum(breakdown.values())
     metered_models = [model.id for model in config.models if model.metered]
