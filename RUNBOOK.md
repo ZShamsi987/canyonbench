@@ -23,26 +23,28 @@ Steps marked **[BLOCKS]** stop the pipeline until a human acts. Steps marked
 
 ```bash
 ssh <you>@adroit.princeton.edu
-git clone https://github.com/ZShamsi987/canyonbench.git ~/canyonbench-trace
-bash ~/canyonbench-trace/scripts/adroit/bootstrap.sh
+export CANYONBENCH_HOME=/scratch/network/$USER/canyonbench-trace
+export CANYONBENCH_DATA=/scratch/network/$USER/canyonbench-trace-data
+git clone https://github.com/ZShamsi987/canyonbench.git "$CANYONBENCH_HOME"
+bash "$CANYONBENCH_HOME/scripts/adroit/bootstrap.sh"
 ```
 
 Then add to `~/.bashrc` exactly what the script prints, including:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...      # your key, never in the repo
-export CANYONBENCH_HOME=$HOME/canyonbench-trace
+export CANYONBENCH_HOME=/scratch/network/$USER/canyonbench-trace
 export CANYONBENCH_DATA=/scratch/network/$USER/canyonbench-trace-data
 export CANYONBENCH_DATASET_DIR=$CANYONBENCH_DATA/generated
 ```
 
 ```bash
-cd ~/canyonbench-trace && sbatch slurm/adroit_preflight.sbatch
+cd "$CANYONBENCH_HOME" && sbatch slurm/adroit_preflight.sbatch
 ```
 
 Nothing above edits `~/.bashrc`, loads a module, or touches any other directory.
 The bootstrap **refuses to run** if the target path exists and is not this
-project. To remove the project later: `rm -rf ~/canyonbench-trace $CANYONBENCH_DATA`.
+project. To remove the project later: `rm -rf $CANYONBENCH_HOME $CANYONBENCH_DATA`.
 
 **[OUTPUT]** Read `logs/cb-preflight-*.out`. It runs `qos` and `sacctmgr` and
 records the partitions and wall-time limits your account actually has. Send me
@@ -83,29 +85,36 @@ lives on the persistent filesystem.
 Nothing here touches a GPU or spends money.
 
 ```bash
-cd ~/canyonbench-trace
+cd "$CANYONBENCH_HOME"
 
-# All of this writes to exactly two directories: ~/canyonbench-trace (the
+# All of this writes to exactly two directories: $CANYONBENCH_HOME (the
 # checkout) and $CANYONBENCH_DATA. Nothing else on Adroit is touched.
 
-# 1.1 Acquire sources: 10 array tasks under 4 h each, 2 at a time
-ACQUIRE=$(sbatch --parsable slurm/adroit_acquire.sbatch)
+# 1.1 Acquire sources on the LOGIN node, where Adroit permits outbound network
+# access.  Do not submit slurm/adroit_acquire.sbatch on Adroit: compute nodes
+# have no DNS or TCP egress.
+nohup setsid nice -n 19 bash scripts/adroit/acquire_login.sh \
+  > "$CANYONBENCH_DATA/logs/acquire-login.log" 2>&1 < /dev/null &
+echo "acquisition pid $!"
+tail -f "$CANYONBENCH_DATA/logs/acquire-login.log"
 
-# 1.2 Merge the chunks and freeze the 120-site cohort, after the array finishes
-sbatch --dependency=afterok:$ACQUIRE slurm/adroit_freeze.sbatch
+# Continue only after that log ends with "ACQUIRE OK".  The login-node workflow
+# writes one complete prepared manifest, which adroit_freeze.sbatch accepts.
+sbatch slurm/adroit_freeze.sbatch
 
-# 1.3 Generate 960 clean + 240 degraded views and all interventions  (~2-6 h)
+# After the freeze job succeeds, generate 960 clean + 240 degraded views and
+# all interventions (~2-6 h).
 sbatch slurm/adroit_build.sbatch
 
-# 1.4 Instrument validation V1/V2 and the audit packet  (~1 h)
+# Read dataset-validation.json and require passed: true before submitting the
+# instrument job.  Then run V1/V2 and create the audit packet (~1 h).
 sbatch slurm/adroit_instruments.sbatch $CANYONBENCH_DATASET_DIR/site_0001/view_a3km_nadir/rgb.png
 ```
 
-Acquisition is chunked because Adroit routes jobs through QOS and the published
-docs deliberately do not fix the wall-clock ceiling. Each task stays under 4
-hours, which fits any plausible limit. Once the preflight output tells you the
-real ceiling, you can raise `--time` and drop `--array` — the commands are
-identical either way.
+Acquisition is intentionally a single niced, resumable login-node process. It
+is I/O-bound, writes each artifact atomically, and skips already complete sites,
+so it is safe to stop and restart. The historical Slurm-array script remains
+for clusters whose compute nodes have egress, but is not usable on Adroit.
 
 **[OUTPUT]** After 1.3, read `$CANYONBENCH_DATA/reports/dataset-validation.json`.
 `passed: true` is required. Any error there is a real defect — send it to me

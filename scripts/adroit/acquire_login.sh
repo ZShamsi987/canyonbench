@@ -16,7 +16,8 @@
 # resumable — every artifact is written atomically and skipped when it already
 # matches the site grid — so it can be stopped and restarted at any point.
 #
-#   bash scripts/adroit/acquire_login.sh              # full run, detached
+#   bash scripts/adroit/acquire_login.sh              # full foreground run
+#   # For a detached run, use the nohup command in RUNBOOK.md.
 #   CANYONBENCH_LIMIT=1 bash scripts/adroit/acquire_login.sh   # smoke test
 set -euo pipefail
 
