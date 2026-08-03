@@ -2,7 +2,7 @@
 set -eu
 
 uv lock --check
-ruff check .
-ruff format --check .
-mypy src
-pytest --cov=canyonbench --cov-report=term-missing
+uv run --frozen --extra trace --extra dev ruff check .
+uv run --frozen --extra trace --extra dev ruff format --check .
+uv run --frozen --extra trace --extra dev mypy src
+uv run --frozen --extra trace --extra dev pytest --cov=canyonbench --cov-report=term-missing

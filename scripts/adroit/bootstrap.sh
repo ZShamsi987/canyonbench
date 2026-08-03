@@ -63,8 +63,9 @@ cd "$CANYONBENCH_HOME"
 
 echo "== resolving the pinned environment into $CANYONBENCH_HOME/.venv =="
 # `trace` carries rasterio, GDAL bindings, OpenCV, shapely, matplotlib,
-# statsmodels, and scikit-learn: the whole CPU half of the project.
-uv sync --frozen --extra trace
+# statsmodels, and scikit-learn: the whole CPU half of the project. `dev`
+# provides the ruff, mypy, and pytest commands used by scripts/check.sh.
+uv sync --frozen --extra trace --extra dev
 
 echo "== creating the data root =="
 mkdir -p \
