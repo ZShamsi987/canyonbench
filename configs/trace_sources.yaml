@@ -10,7 +10,10 @@ source_half_extent_m: 12500.0
 negative_screen_half_extent_m: 10100.0
 minimum_candidate_separation_m: 2000.0
 candidate_multiplier: 2.0
-preferred_naip_years: [2023, 2022]
+# Some flight-corridor tiles have no complete 2022/2023 NAIP coverage.  The
+# 2021 collection fully covers those sites; acquisition uses that same year for
+# CDL and Annual NLCD, so G1 remains a like-for-like date-alignment check.
+preferred_naip_years: [2023, 2022, 2021]
 discovery_landcover_year: 2023
 detector_landcover_year: 2022
 
