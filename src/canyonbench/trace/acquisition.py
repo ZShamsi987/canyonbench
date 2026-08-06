@@ -151,9 +151,13 @@ class _Grid:
 
 
 def _http_client() -> httpx.Client:
+    # Public imagery services frequently return a gateway timeout for a single
+    # export tile.  Keep a failed candidate bounded: acquisition is resumable,
+    # whereas five 300-second waits can stall the whole serial login-node run
+    # for more than twenty minutes before the next candidate is tried.
     return httpx.Client(
         follow_redirects=True,
-        timeout=httpx.Timeout(300, connect=30),
+        timeout=httpx.Timeout(60, connect=20),
         headers={"User-Agent": "CanyonBench-Trace/4.0 source-curation"},
     )
 
@@ -163,7 +167,7 @@ def _retry_get(
     url: str,
     *,
     params: Any = None,
-    attempts: int = 5,
+    attempts: int = 3,
 ) -> httpx.Response:
     error: BaseException | None = None
     for attempt in range(attempts):
@@ -184,7 +188,7 @@ def _retry_post(
     *,
     data: Any = None,
     json_value: Any = None,
-    attempts: int = 5,
+    attempts: int = 3,
 ) -> httpx.Response:
     error: BaseException | None = None
     for attempt in range(attempts):
