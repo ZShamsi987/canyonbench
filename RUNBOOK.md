@@ -184,7 +184,7 @@ sbatch slurm/adroit_openrouter.sbatch
 ```
 
 **[BLOCKS]** The job runs the 50-call price pilot first and **stops** if the
-measured projection does not fit the $220 cap.
+measured projection does not fit the approved $250 cap.
 
 **[OUTPUT]** Read `$CANYONBENCH_DATA/reports/price-pilot.json` before the full
 run proceeds — specifically `measured_projection_usd.nominal_usd` and
@@ -243,7 +243,7 @@ project, and three of them start themselves:
 
 | What | Who starts it | URL |
 |---|---|---|
-| The 3 proprietary models + Qwen 235B | nobody — public API | `https://openrouter.ai/api/v1` |
+| The 4 hosted proprietary models + Qwen 32B/235B | nobody — public API | `https://openrouter.ai/api/v1` |
 | Qwen 8B / 32B | `run_open_weight.sh` | `http://127.0.0.1:8000/v1` |
 | EarthDial | `run_open_weight.sh` | `http://127.0.0.1:8001/v1` |
 | Detector reference | you, one command | `http://127.0.0.1:8010` |
@@ -273,29 +273,31 @@ remote-sensing models. Tell me and I will make that cut explicitly.
 ### On item 7 — prices to verify
 
 Open https://openrouter.ai/models and confirm the input/output rates per million
-tokens for exactly these five, then paste them to me:
+tokens for exactly these six, then paste them to me:
 
 | Model id in the roster | Frozen input $/M | Frozen output $/M | Predicted spend |
 |---|---|---|---|
 | `openai/gpt-5.6-sol` | 5.00 | 30.00 | $79.71 |
 | `anthropic/claude-opus-5` | 5.00 | 25.00 | $76.32 |
 | `google/gemini-3.1-pro-preview` | 2.00 | 12.00 | $31.88 |
+| `qwen/qwen3.8-max` | 2.00 | 6.00 | $27.81 |
 | `qwen/qwen3-vl-32b-instruct` | 0.104 | 0.416 | $1.52 |
 | `qwen/qwen3-vl-235b-a22b-instruct` | 0.20 | 0.88 | $2.97 |
-| | | **predicted total** | **$192** |
+| | | **predicted total** | **$220.22** |
 
 That is the worst case, where every query names the full six-cell budget; at a
-more realistic three cells it is about $149. Both fit the $220 allocation.
-The two Qwen rates matter least but are the least certain — check them too.
+more realistic three cells it is about $170.36. The registered maximum is below
+the approved $250 allocation, but do not authorize production unless the
+50-call/model pilot also fits. Recheck all three Qwen rates.
 
 Also confirm each slug still exists and still accepts image input plus structured
 output. If one is gone, tell me the replacement and I will update the roster and
 the decision log. The price pilot measures real token usage, but it cannot detect
 a stale *price*.
 
-**Two models are 82 percent of the bill.** If a slug is retired and you need a
+**Two models are 71 percent of the bill.** If a slug is retired and you need a
 replacement, the constraints are: a different vendor from the other two, image
-input, structured output, and a rate that keeps the total under $220 (anything at
+input, structured output, and a rate that keeps the total under $250 (anything at
 or below $5/M input and $30/M output does). Send me the candidate and its
 published rates and I will re-run the projection before it goes in the roster.
 

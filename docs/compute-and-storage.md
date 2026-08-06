@@ -101,7 +101,7 @@ the roster is reached over HTTP, and each one is either:
 
 | Model | Server | Who starts it | URL |
 |---|---|---|---|
-| 3 proprietary + Qwen 32B + Qwen 235B | OpenRouter | nobody — it is a public API | `https://openrouter.ai/api/v1` |
+| 4 hosted proprietary + Qwen 32B + Qwen 235B | OpenRouter | nobody — it is a public API | `https://openrouter.ai/api/v1` |
 | Qwen 8B | vLLM, on your Lambda box | `run_open_weight.sh` | `http://127.0.0.1:8000/v1` |
 | EarthDial | vLLM, on your Lambda box | `run_open_weight.sh` | `http://127.0.0.1:8001/v1` |
 | Detector reference | `serve_detector.py`, on your Lambda box | you, one command | `http://127.0.0.1:8010` |

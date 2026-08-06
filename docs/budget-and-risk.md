@@ -8,8 +8,9 @@ line. The hardware split itself is documented in
 
 ## Call volume and predicted spend
 
-Only API-reached models cost cash. The 32B and 235B Qwen models are API-reached
-because neither fits the 40 GB card available in the filesystem's region; see
+Only API-reached models cost cash. Qwen Max and the 32B/235B Qwen VL models are
+API-reached because they are hosted services or do not fit the 40 GB card
+available in the filesystem's region; see
 [compute-and-storage.md](compute-and-storage.md). Self-served models run on
 credited GPU capacity, so they take the full three-operator Tier B; **metered models take the
 primary operator only**, because three operators x six named cells x four
@@ -39,24 +40,27 @@ At 1,400 input and 80 output tokens per call:
 |---|---|---|---|---|---|
 | `openai/gpt-5.6-sol` | 5.00 | 30.00 | $0.0094 | $79.71 | $61.66 |
 | `anthropic/claude-opus-5` | 5.00 | 25.00 | $0.0090 | $76.32 | $59.04 |
-| `google/gemini-3.1-pro-preview` | 2.00 | 12.00 | $0.0038 | $31.88 | $24.66 |
+| `google/gemini-3.1-pro-preview` | 2.00 | 12.00 | $0.0038 | $31.88 | $24.67 |
+| `qwen/qwen3.8-max` | 2.00 | 6.00 | $0.0033 | $27.81 | $21.52 |
 | `qwen/qwen3-vl-32b-instruct` | 0.104 | 0.416 | $0.0002 | $1.52 | $1.17 |
 | `qwen/qwen3-vl-235b-a22b-instruct` | 0.20 | 0.88 | $0.0004 | $2.97 | $2.30 |
-| **Total** | | | | **$192** | **$149** |
+| **Total** | | | | **$220.22** | **$170.36** |
 
 The spread is driven entirely by how many evidence cells models actually name:
-K=6 is the cap, K=3 a plausible average. Both fit the $220 cash allocation, and
-the harness aborts on the first request that would breach it.
+K=6 is the cap, K=3 a plausible average. The registered worst case leaves
+$29.78 under the approved $250 cash allocation. The 50-call/model price pilot
+still must authorize the production run; the harness aborts on the first
+request that would breach the cap.
 
 The V3 line exists because operator agreement correlates model *rankings* across
 operators. Restricting metered models to O1 everywhere would leave that
 correlation computed over three credited models, which is too few points to
 support a required protocol element; 40 views of O2/O3 restores it to the full
-roster for $14.
+roster for about $16.62.
 
-**Two models carry 82 percent of the cost.** If the projection needs to come
-down, in order of preference: drop one of the two $5/M models (descope ladder
-step 6, saving ~$70), or halve `causal_core_views` from 160 to 80 for metered
+**Two models carry 71 percent of the cost.** If the measured projection needs
+to come down, in order of preference: drop one of the two $5/M models (descope
+ladder step 6, saving about $76–80), or halve `causal_core_views` from 160 to 80 for metered
 models only (saving ~$50 and widening the Tier B confidence intervals). Do not
 reduce Tier A.
 
@@ -66,21 +70,22 @@ At a 768 px long edge a view costs roughly 1,400 input tokens plus about 80
 output tokens. At mid-tier pricing near $1.50/M input and $6/M output that is
 about $0.0026 per call (~$43 for the full volume); at premium pricing near $3/M
 and $15/M it is about $0.0054 per call (~$90). `configs/trace_run.frozen.yaml`
-carries the per-model rates frozen from the OpenRouter catalogue on 2026-07-29.
+carries the per-model rates frozen on 2026-08-06; Qwen Max uses the supplied
+$2/M input and $6/M output rate pending the measured price pilot.
 
 ## Allocation
 
 | Item | Cost | Covered by | Purpose |
 |---|---|---|---|
-| OpenRouter API credits | $180 | Cash | All API inference across Tiers A–C plus robustness re-runs, with headroom for premium-tier models and one complete re-run after a defect |
-| Contingency | $40 | Cash | Provider price changes, an additional proprietary model, extended CAVE coverage |
+| OpenRouter API plan | $220.22 worst case | Cash | All six API models across Tiers A–C plus robustness re-runs |
+| Remaining headroom | $29.78 | Cash | The measured provider-token projection must still pass the price pilot |
 | GPU compute | $0 | Lambda credit ($400) | 1x A100 40 GB in us-east-1 at $1.99/hr; ~15 GPU-hours ≈ $30 of the $340 |
 | Persistent storage | $0 | Lambda credit ($400) | Weights, frozen dataset bundle, results and logs; ~200 GB |
 | CPU compute and source tiles | $0 | Adroit allocation | Acquisition, generation, gates, interventions, analysis; tiles never leave Adroit |
 | Tooling, hosting, DOI | $0 | Open access | vLLM, OpenCV, rasterio, GDAL, Hugging Face, Zenodo |
-| **Cash total** | **$220** | | Within the $200–250 target; $80 of headroom against the $300 cap |
+| **Cash total** | **$250** | | At the approved upper bound of the $200–250 target; $50 of headroom against the $300 cap |
 
-`configs/trace_run.frozen.yaml` sets `budget.max_cost_usd: 220.0`, so the harness
+`configs/trace_run.frozen.yaml` sets `budget.max_cost_usd: 250.0`, so the harness
 aborts on the first request that would breach the cash allocation.
 
 **Credit position.** Roughly 15 GPU-hours and ~200 GB against $400 of Lambda

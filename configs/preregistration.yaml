@@ -41,8 +41,8 @@ ablations:
   - flight-corridor versus regional-OOD versus cross-biome
   - clean versus singly degraded
 model_roster_rules:
-  - Target eight models and never fewer than six.
-  - Use three proprietary general VLMs from different vendors.
+  - Target nine models and never fewer than six.
+  - Use three proprietary general VLMs from different vendors, plus the hosted Qwen Max service as a fourth distinct-provider comparison.
   - Use three open-weight VLM sizes including one pointing-capable model.
   - Use one or two remote-sensing-specialized VLMs.
   - Use one non-language detector or segmenter as an imagery upper reference.
@@ -77,10 +77,10 @@ descope_ladder:
   - CAVE component ablations while retaining full CAVE
   - oblique geometry
   - Tier C and Claim 4
-  - reduce proprietary models from three to two
+  - reduce proprietary models from four to three
 multiplicity_method: benjamini_hochberg
 alpha: 0.05
-frozen_at: "2026-07-29"
+frozen_at: "2026-08-06"
 notes:
   independence_unit: base geographic site
   split: 20 percent development / 20 percent validation / 60 percent reserved test
@@ -91,6 +91,7 @@ notes:
   source_candidates: 230 candidates frozen before materialization
   group_a_feasibility: Site centers use the Glen/Marble/Page/Lake Powell near-field because the literal WORLD10 bounding box cannot supply ten buffered 24 km water-negative sites.
   model_roster: configs/trace_run.frozen.yaml
-  compute_split: Open-weight and RS models are served in bfloat16 on Lambda GPU credit; proprietary and 235B-class models are reached over the OpenRouter API; all dataset construction and analysis is Adroit CPU.
+  compute_split: Open-weight and RS models are served in bfloat16 on Lambda GPU credit; the four hosted proprietary models and 32B/235B-class models are reached over the OpenRouter API; all dataset construction and analysis is Adroit CPU.
+  roster_amendment_2026_08_06: Added qwen/qwen3.8-max before dataset freeze at the supplied $2/M input and $6/M output OpenRouter rates; the full 40-view paid V3 subset is retained under the approved $250 cap.
   precision: bfloat16 only; quantized serving is inadmissible for a faithfulness benchmark.
-  cash_cap_usd: 220
+  cash_cap_usd: 250

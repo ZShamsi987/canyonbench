@@ -106,5 +106,22 @@ Run:
 canyonbench trace calibrate-quality /path/to/frames calibration/flight-quality.json
 ```
 
+### Rebuilding the World-X calibration without local video storage
+
+The camera metadata clock is invalid. The audited World-X clip order and the
+verified sync anchor are authoritative instead. To replace the legacy
+left-third-cropped calibration, run the storage-bounded full-frame rebuild from
+the repository root:
+
+```bash
+.venv/bin/python scripts/recalibrate_flight_quality.py
+```
+
+It selects exactly 377 usable Launching/Floating clips in chronological audited
+order, extracts only one uncropped midpoint frame at a time, measures it, and
+evicts the Drive-backed source immediately. It retains neither the footage nor
+the temporary frames; `flight-quality-provenance.json` records the clip order
+and output-frame hashes.
+
 This measures the registered proxies and hashes every calibration frame. The
 calibration record—not the full video—is needed by the generator.

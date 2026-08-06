@@ -5,7 +5,7 @@
 #
 #   Lambda GPU  : 1x A100 40 GB SXM4 in us-east-1, mounting the CanyonBench
 #                 filesystem. Serves the 8B, EarthDial, and the detector.
-#   Adroit + API: the three proprietary models plus the two Qwen sizes whose
+#   Adroit + API: four hosted general VLMs plus the two Qwen VL sizes whose
 #                 bfloat16 weights exceed a 40 GB card.
 #
 # The defaults below are the Adroit/OpenRouter paths.
@@ -15,7 +15,8 @@ prompt_file: trace_prompts.yaml
 tiers: [A, B, C]
 analyses: [main]
 
-# Frozen 2026-07-29 from the OpenRouter public model catalog. Dollar rates are
+# Frozen 2026-08-06 from the OpenRouter public model catalog and the approved
+# Qwen Max rate. Dollar rates are
 # per million tokens and must be rechecked by `trace plan-run` immediately
 # before execution; any provider/model substitution requires a decision-log row.
 models:
@@ -53,6 +54,20 @@ models:
     metered: true
     input_per_million_usd: 2.0
     output_per_million_usd: 12.0
+
+  # Added before dataset freeze on 2026-08-06. This is a hosted Qwen service,
+  # so it is classified by serving/access as proprietary rather than as one of
+  # the self-servable open-weight comparison sizes below. User-supplied
+  # OpenRouter rates: $2/M input, $6/M output; recheck in the price pilot.
+  - id: qwen/qwen3.8-max
+    benchmark_role: proprietary
+    provider: Qwen via OpenRouter
+    adapter: *openrouter
+    image_max_side: 768
+    supports_json_schema: true
+    metered: true
+    input_per_million_usd: 2.0
+    output_per_million_usd: 6.0
 
   # Served locally on Lambda in bfloat16; no cash cost. `served_model_id` is the
   # weights repository, while `id` stays the benchmark identity in every result.
@@ -133,12 +148,12 @@ models:
     supports_json_schema: true
     metered: false
 
-# The cash allocation is $180 of OpenRouter credit plus $40 of contingency. GPU
-# compute and persistent storage are covered by Lambda credit and never appear
-# here. The tracker aborts the run on the first request that would breach this.
+# The approved $250 hard cap covers the expanded six-model OpenRouter roster.
+# GPU compute and persistent storage are covered by Lambda credit and never
+# appear here. The tracker aborts the run on the first request that would breach it.
 budget:
   max_requests: 60000
-  max_cost_usd: 220.0
+  max_cost_usd: 250.0
   input_per_million_usd: 0.0
   output_per_million_usd: 0.0
 

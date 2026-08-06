@@ -324,7 +324,7 @@ def test_frozen_roster_splits_cleanly_across_the_two_hosts() -> None:
     served = [model for model in config.models if not model.metered]
     paid = [model for model in config.models if model.metered]
 
-    assert len(config.models) == 8
+    assert len(config.models) == 9
     # Everything self-served points at a local port and names its weights.
     for model in served:
         base_url = model.adapter.base_url or ""
@@ -336,7 +336,7 @@ def test_frozen_roster_splits_cleanly_across_the_two_hosts() -> None:
         assert model.adapter.base_url == "https://openrouter.ai/api/v1"
         assert model.adapter.api_key_env == "OPENROUTER_API_KEY"
         assert (model.input_per_million_usd or 0) > 0
-    assert config.budget.max_cost_usd == 220.0
+    assert config.budget.max_cost_usd == 250.0
     assert {model.benchmark_role for model in served} == {
         "open_weight",
         "remote_sensing",
@@ -478,8 +478,9 @@ def test_operator_agreement_subset_keeps_v3_over_the_whole_roster(tmp_path) -> N
 
     cost = plan["cost_projection_usd"]
     assert cost["nominal_fits_cost_cap"], "the registered plan must fit the cash cap"
-    assert 150 <= cost["nominal_usd"] <= 220, cost["nominal_usd"]
-    # Five metered models: three proprietary plus the two Qwen sizes that do not
-    # fit the 40 GB card in bfloat16.
-    assert len(cost["by_model"]) == 5
+    assert 150 <= cost["nominal_usd"] <= 250, cost["nominal_usd"]
+    # Six metered models: four hosted general VLMs plus the two Qwen VL sizes
+    # that do not fit the 40 GB card in bfloat16.
+    assert len(cost["by_model"]) == 6
     assert "qwen/qwen3-vl-32b-instruct" in cost["by_model"]
+    assert "qwen/qwen3.8-max" in cost["by_model"]

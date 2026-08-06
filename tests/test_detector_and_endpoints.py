@@ -243,11 +243,11 @@ def test_roster_splits_by_what_a_40gb_card_can_hold() -> None:
     }
     # Both Qwen sizes that exceed 40 GB in bfloat16 are reached over the API.
     assert {"qwen/qwen3-vl-32b-instruct", "qwen/qwen3-vl-235b-a22b-instruct"} <= paid
-    # The roster composition is unchanged by the move: still 3/3/1/1.
+    # Qwen Max is a fourth hosted proprietary comparison: 4/3/1/1.
     roles: dict[str, int] = {}
     for model in config.models:
         roles[str(model.benchmark_role)] = roles.get(str(model.benchmark_role), 0) + 1
-    assert roles == {"proprietary": 3, "open_weight": 3, "remote_sensing": 1, "detector": 1}
+    assert roles == {"proprietary": 4, "open_weight": 3, "remote_sensing": 1, "detector": 1}
     # Every paid model carries an explicit non-zero rate.
     for model in config.models:
         if model.metered:

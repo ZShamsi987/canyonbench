@@ -3,12 +3,14 @@
 #
 # Adroit does the CPU half of the project. Nothing here requests a GPU.
 #
-# ISOLATION CONTRACT. This script creates or updates exactly two directories:
+# ISOLATION CONTRACT. This script creates or updates exactly two storage roots:
 #
 #   /scratch/network/$USER/canyonbench-trace     the project checkout and venv
 #   /scratch/network/$USER/canyonbench-trace-data   all data and results
 #
-# It does NOT edit ~/.bashrc, load or modify any module, touch any conda
+# It also creates at most one compatibility symlink beside the checkout when
+# needed: `CanyonBench-data` -> the declared data root. The portable project
+# config resolves its data paths through that name. It does NOT edit ~/.bashrc, load or modify any module, touch any conda
 # environment, write to any shared prefix, or go near an existing checkout. If a
 # directory is already present and is not this project, the script stops rather
 # than writing into it. Both paths are overridable:
@@ -73,6 +75,24 @@ mkdir -p \
   "$CANYONBENCH_DATA"/runs/{openrouter,lambda,price-pilot} \
   "$CANYONBENCH_DATA"/results/final \
   "$CANYONBENCH_HOME/logs"
+
+# configs/trace.yaml is intentionally portable and names the sibling
+# CanyonBench-data contract. Adroit uses canyonbench-trace-data as its physical
+# scratch root, so expose only a symlink alias rather than copying any rasters.
+CONFIG_DATA_LINK="$(dirname "$CANYONBENCH_HOME")/CanyonBench-data"
+data_real="$(cd "$CANYONBENCH_DATA" && pwd -P)"
+if [ -L "$CONFIG_DATA_LINK" ]; then
+  link_real="$(cd "$CONFIG_DATA_LINK" && pwd -P)"
+  if [ "$link_real" != "$data_real" ]; then
+    echo "REFUSING TO CONTINUE: $CONFIG_DATA_LINK points outside CANYONBENCH_DATA." >&2
+    exit 78
+  fi
+elif [ -e "$CONFIG_DATA_LINK" ]; then
+  echo "REFUSING TO CONTINUE: $CONFIG_DATA_LINK exists and is not the data-root link." >&2
+  exit 78
+else
+  ln -s "$CANYONBENCH_DATA" "$CONFIG_DATA_LINK"
+fi
 
 cat <<PROFILE
 

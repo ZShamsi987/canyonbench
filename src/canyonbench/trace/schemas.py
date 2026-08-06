@@ -682,7 +682,7 @@ class TraceRunConfig(StrictModel):
                 role: roles.count(role) for role in set(roles) if role is not None
             }
             valid_composition = (
-                2 <= counts.get("proprietary", 0) <= 3
+                2 <= counts.get("proprietary", 0) <= 4
                 and 2 <= counts.get("open_weight", 0) <= 3
                 and 1 <= counts.get("remote_sensing", 0) <= 2
                 and counts.get("detector", 0) == 1
@@ -690,17 +690,15 @@ class TraceRunConfig(StrictModel):
             )
             if not valid_composition or not 6 <= len(self.models) <= 9:
                 raise ValueError(
-                    "v4 roster requires 6-9 models: 2-3 proprietary, 2-3 "
+                    "v4 roster requires 6-9 models: 2-4 proprietary, 2-3 "
                     "open-weight, 1-2 remote-sensing, and exactly 1 detector; "
-                    f"the registered target is 3/3/1/1 (8 total); found {counts}"
+                    f"the registered target is 4/3/1/1 (9 total); found {counts}"
                 )
             proprietary = [model for model in self.models if model.benchmark_role == "proprietary"]
             missing_providers = [model.id for model in proprietary if not model.provider]
             providers = [model.provider for model in proprietary]
             if missing_providers or len(set(providers)) != len(providers):
-                raise ValueError(
-                    "the three proprietary models require distinct, non-empty providers"
-                )
+                raise ValueError("proprietary models require distinct, non-empty providers")
             if not any(
                 model.supports_pointing
                 for model in self.models

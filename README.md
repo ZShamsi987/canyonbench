@@ -217,8 +217,9 @@ repository's `AUDIT_GUIDE.md`.
 
 Use the ready roster in
 [configs/trace_run.frozen.yaml](configs/trace_run.frozen.yaml). It freezes
-three proprietary vendors, three Qwen3-VL open-weight sizes, EarthDial, the
-non-language detector, and observed 2026-07-29 prices. Set credentials only in
+three proprietary vendors plus hosted `qwen/qwen3.8-max`, three Qwen3-VL
+open-weight sizes, EarthDial, the non-language detector, and frozen 2026-08-06
+prices. Set credentials only in
 environment variables and recheck the cost plan immediately before inference.
 Preflight the request cap and the dollar projection before any paid call, then
 measure the real price with the D1 pilot and re-project from the measurement:
@@ -228,7 +229,7 @@ canyonbench trace plan-run configs/trace_run.frozen.yaml \
   --output /Users/zafirshamsi/CanyonBench-data/reports/call-plan.json
 canyonbench trace price-pilot configs/trace_run.frozen.yaml --calls 50
 canyonbench trace plan-run configs/trace_run.frozen.yaml \
-  --price-pilot /Users/zafirshamsi/CanyonBench-data/runs/frozen-2026-07-29/price_pilot/price_pilot.json \
+  --price-pilot /Users/zafirshamsi/CanyonBench-data/runs/frozen-2026-08-06/price_pilot/price_pilot.json \
   --output /Users/zafirshamsi/CanyonBench-data/reports/call-plan-measured.json
 canyonbench trace run configs/trace_run.frozen.yaml
 canyonbench trace reference-baselines \
