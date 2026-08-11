@@ -114,7 +114,7 @@ def test_fetch_cdl_uses_a_local_official_archive_when_available(tmp_path, monkey
     with _client(unexpected_request) as client:
         result = _fetch_cdl(client, (-112.0, 36.0, -111.0, 37.0), 2024, tmp_path / "cdl.tif")
 
-    assert str(result) == f"/vsizip/{archive.resolve()}/2024_30m_cdls.tif"
+    assert result == f"/vsizip//{archive.resolve().as_posix().lstrip('/')}/2024_30m_cdls.tif"
 
 
 def test_arcgis_features_chunk_ids_without_loss_or_duplication() -> None:
