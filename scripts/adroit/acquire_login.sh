@@ -27,6 +27,9 @@ export UV_CACHE_DIR="${UV_CACHE_DIR:-$CANYONBENCH_DATA/.uv-cache}"
 export PATH="$HOME/.local/bin:$PATH"
 export GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR
 export CPL_VSIL_CURL_ALLOWED_EXTENSIONS=.tif,.tiff
+# When populated by cache_cdl_archives.sh, use local official CDL archives
+# rather than the unreliable per-site CropScape download endpoint.
+export CANYONBENCH_CDL_CACHE_DIR="${CANYONBENCH_CDL_CACHE_DIR:-$CANYONBENCH_DATA/cache/cdl}"
 # One download at a time; this must never look like a parallel scraper.
 export GDAL_NUM_THREADS=1
 

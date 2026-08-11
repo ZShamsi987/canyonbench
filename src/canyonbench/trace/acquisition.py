@@ -8,6 +8,7 @@ import math
 import os
 import tempfile
 import time
+import zipfile
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -67,6 +68,7 @@ TIGER_TERMS = "https://www.census.gov/data/developers/about/terms-of-service.htm
 OSM_OVERPASS = "https://overpass-api.de/api/interpreter"
 OSM_TERMS = "https://www.openstreetmap.org/copyright"
 CDL_SERVICE = "https://nassgeodata.gmu.edu/axis2/services/CDLService/GetCDLFile"
+CDL_RELEASE_URL = "https://www.nass.usda.gov/Research_and_Science/Cropland/Release/"
 CDL_TERMS = "https://www.nass.usda.gov/Research_and_Science/Cropland/sarsfaqs2.php"
 NLCD_TERMS = (
     "https://www.usgs.gov/centers/eros/science/usgs-eros-archive-land-cover-"
@@ -366,6 +368,22 @@ def _fetch_cdl(
 ) -> Path:
     if destination.is_file():
         return destination
+    archive = _cached_cdl_archive(year)
+    if archive is not None:
+        try:
+            with zipfile.ZipFile(archive) as bundle:
+                members = sorted(
+                    name for name in bundle.namelist() if name.lower().endswith((".tif", ".tiff"))
+                )
+        except zipfile.BadZipFile as exc:
+            raise DataValidationError(f"Invalid cached national CDL archive: {archive}") from exc
+        if len(members) != 1:
+            raise DataValidationError(
+                f"Cached national CDL archive must contain one GeoTIFF, found {members}: {archive}"
+            )
+        # GDAL windows this local official archive directly, avoiding one
+        # unreliable CropScape API request for every candidate site.
+        return Path(f"/vsizip/{archive.resolve()}/{members[0]}")
     bounds = transform_bounds("EPSG:4326", "EPSG:5070", *bounds_wgs84, densify_pts=21)
     response = _retry_get(
         client,
@@ -383,6 +401,16 @@ def _fetch_cdl(
         raise DataValidationError(f"USDA CDL download was not a TIFF: {url}")
     _atomic_bytes(destination, image.content)
     return destination
+
+
+def _cached_cdl_archive(year: int) -> Path | None:
+    """Return the configured official CDL archive if it is locally available."""
+
+    cache_dir = os.environ.get("CANYONBENCH_CDL_CACHE_DIR")
+    if not cache_dir:
+        return None
+    archive = Path(cache_dir) / f"{year}_30m_cdls.zip"
+    return archive if archive.is_file() else None
 
 
 def _to_projected_geometry(geometry: dict[str, Any], crs: str) -> BaseGeometry:
@@ -731,10 +759,24 @@ def _naip_items(
     )
 
 
+def _signed_planetary_computer_href(client: httpx.Client, href: str) -> str:
+    """Sign a private Planetary Computer asset before GDAL reads its COG."""
+
+    if not href.startswith(("https://", "http://")):
+        return href
+    payload = _retry_get(client, PLANETARY_COMPUTER_SIGN, params={"href": href}).json()
+    signed = payload.get("href")
+    if not isinstance(signed, str):
+        raise DataValidationError("Planetary Computer did not return a signed NAIP asset URL")
+    return signed
+
+
 def _materialize_naip_cogs(
     items: Sequence[dict[str, Any]],
     grid: _Grid,
     destination: Path,
+    *,
+    client: httpx.Client,
 ) -> None:
     if _raster_matches(destination, grid, count=3, maximum_nodata_fraction=0.05):
         return
@@ -756,7 +798,7 @@ def _materialize_naip_cogs(
             href = asset.get("href")
             if not isinstance(href, str):
                 continue
-            with rasterio.open(href) as source:
+            with rasterio.open(_signed_planetary_computer_href(client, href)) as source:
                 count = min(3, source.count)
                 reproject(
                     source=rasterio.band(source, list(range(1, count + 1))),
@@ -836,7 +878,13 @@ def _materialize_naip(
     """Materialize one NAIP mosaic, using bounded official exports in production."""
 
     if year is None:
-        _materialize_naip_cogs(items, grid, destination)
+        owns_client = client is None
+        active = client or _http_client()
+        try:
+            _materialize_naip_cogs(items, grid, destination, client=active)
+        finally:
+            if owns_client:
+                active.close()
         return
     if _raster_matches(destination, grid, count=3, maximum_nodata_fraction=0.05):
         return
@@ -1196,13 +1244,27 @@ def acquire_candidate(
     try:
         imagery = directory / "imagery.tif"
         naip_year, naip_items = _naip_items(active, grid, config.preferred_naip_years)
-        _materialize_naip(
-            naip_items,
-            grid,
-            imagery,
-            year=naip_year,
-            client=active,
-        )
+        imagery_delivery_url = NAIP_SERVICE
+        try:
+            _materialize_naip(
+                naip_items,
+                grid,
+                imagery,
+                year=naip_year,
+                client=active,
+            )
+        except DataValidationError as export_error:
+            # ImageServer export tiles occasionally contain nodata holes even
+            # when STAC reports full NAIP coverage. Reuse the same frozen NAIP
+            # items via their signed Planetary Computer COG mirrors.
+            try:
+                _materialize_naip_cogs(naip_items, grid, imagery, client=active)
+            except BaseException as cog_error:
+                raise DataValidationError(
+                    "NAIP export and signed COG fallback both failed: "
+                    f"export={export_error}; cog={cog_error}"
+                ) from cog_error
+            imagery_delivery_url = NAIP_STAC_SEARCH
         naip_ids = [str(item["id"]) for item in naip_items]
         acquisition_dates = sorted(
             str(item.get("properties", {}).get("datetime", ""))[:10]
@@ -1337,7 +1399,7 @@ def acquire_candidate(
             version=str(naip_year),
             acquisition_date=imagery_date,
             resolution_m=naip_resolution,
-            url=NAIP_SERVICE,
+            url=imagery_delivery_url,
             artifact=imagery,
             license_name="U.S. federal public-domain data",
             terms_url=NAIP_TERMS,
@@ -1413,7 +1475,7 @@ def acquire_candidate(
                     version=str(cdl_year),
                     acquisition_date=f"{cdl_year}-07-01",
                     resolution_m=10 if cdl_year >= 2025 else 30,
-                    url=CDL_SERVICE,
+                    url=(CDL_RELEASE_URL if _cached_cdl_archive(cdl_year) else CDL_SERVICE),
                     artifact=primary["field"],
                     license_name="U.S. federal public-domain data",
                     terms_url=CDL_TERMS,

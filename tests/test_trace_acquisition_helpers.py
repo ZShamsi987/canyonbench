@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -97,6 +98,23 @@ def test_retry_get_recovers_then_aborts_with_provenance(monkeypatch) -> None:
         pytest.raises(DataValidationError, match="failed after 1 attempts"),
     ):
         _retry_post(client, "https://example.invalid/x", data={"a": "b"}, attempts=1)
+
+
+def test_fetch_cdl_uses_a_local_official_archive_when_available(tmp_path, monkeypatch) -> None:
+    archive_dir = tmp_path / "cdl"
+    archive_dir.mkdir()
+    archive = archive_dir / "2024_30m_cdls.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr("2024_30m_cdls.tif", b"not-read-by-fetch")
+    monkeypatch.setenv("CANYONBENCH_CDL_CACHE_DIR", str(archive_dir))
+
+    def unexpected_request(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"cached CDL fetch made a network request: {request.url}")
+
+    with _client(unexpected_request) as client:
+        result = _fetch_cdl(client, (-112.0, 36.0, -111.0, 37.0), 2024, tmp_path / "cdl.tif")
+
+    assert str(result) == f"/vsizip/{archive.resolve()}/2024_30m_cdls.tif"
 
 
 def test_arcgis_features_chunk_ids_without_loss_or_duplication() -> None:
