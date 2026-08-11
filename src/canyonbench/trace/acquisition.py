@@ -766,7 +766,14 @@ def _signed_planetary_computer_href(client: httpx.Client, href: str) -> str:
 
     if not href.startswith(("https://", "http://")):
         return href
-    payload = _retry_get(client, PLANETARY_COMPUTER_SIGN, params={"href": href}).json()
+    # Signing is a shared public service; allow a longer bounded backoff for
+    # transient 429s before treating the imagery fallback as unavailable.
+    payload = _retry_get(
+        client,
+        PLANETARY_COMPUTER_SIGN,
+        params={"href": href},
+        attempts=6,
+    ).json()
     signed = payload.get("href")
     if not isinstance(signed, str):
         raise DataValidationError("Planetary Computer did not return a signed NAIP asset URL")
