@@ -14,7 +14,9 @@
 # OpenCV parallelize across cores; a GPU instance would consume credited time
 # for no benefit.
 
-source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
+# Slurm stages this script under /var/spool, so BASH_SOURCE cannot locate the
+# checkout.  SLURM_SUBMIT_DIR is the repository root at submission time.
+source "${CANYONBENCH_HOME:-${SLURM_SUBMIT_DIR:-$PWD}}/slurm/_common.sh"
 
 PROJECT_CONFIG="${1:-configs/trace.yaml}"
 DATASET="${CANYONBENCH_DATASET_DIR:-$CANYONBENCH_DATA/generated}"

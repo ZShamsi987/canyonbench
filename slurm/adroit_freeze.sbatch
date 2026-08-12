@@ -14,7 +14,9 @@
 # resumable manifest.  Accept both forms so the downstream freeze is identical
 # regardless of where egress was available.
 
-source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
+# Slurm stages this script under /var/spool, so BASH_SOURCE cannot locate the
+# checkout.  SLURM_SUBMIT_DIR is the repository root at submission time.
+source "${CANYONBENCH_HOME:-${SLURM_SUBMIT_DIR:-$PWD}}/slurm/_common.sh"
 
 PREPARED="$CANYONBENCH_DATA/manifests/trace_prepared_candidates.yaml"
 SITES="${1:-$CANYONBENCH_DATA/manifests/sites.yaml}"

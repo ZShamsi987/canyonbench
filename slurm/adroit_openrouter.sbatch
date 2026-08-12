@@ -17,7 +17,9 @@
 # Export OPENROUTER_API_KEY in the submitting shell; sbatch propagates it by
 # default. Never commit the key.
 
-source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
+# Slurm stages this script under /var/spool, so BASH_SOURCE cannot locate the
+# checkout.  SLURM_SUBMIT_DIR is the repository root at submission time.
+source "${CANYONBENCH_HOME:-${SLURM_SUBMIT_DIR:-$PWD}}/slurm/_common.sh"
 
 CONFIG="${1:-configs/trace_run.frozen.yaml}"
 DATASET="${CANYONBENCH_DATASET_DIR:-$CANYONBENCH_DATA/generated}"

@@ -29,7 +29,9 @@
 # Raise --time and drop --array once `qos` on this account confirms a longer
 # limit; the commands are identical either way.
 
-source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
+# Slurm stages this script under /var/spool, so BASH_SOURCE cannot locate the
+# checkout.  SLURM_SUBMIT_DIR is the repository root at submission time.
+source "${CANYONBENCH_HOME:-${SLURM_SUBMIT_DIR:-$PWD}}/slurm/_common.sh"
 
 SOURCES_CONFIG="${1:-configs/trace_sources.yaml}"
 CANDIDATES="${2:-$CANYONBENCH_DATA/manifests/trace_candidates.yaml}"

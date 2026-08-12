@@ -14,7 +14,9 @@
 # DATASET FREEZE follows this job: no generator change afterwards without
 # restarting model runs.
 
-source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
+# Slurm stages this script under /var/spool, so BASH_SOURCE cannot locate the
+# checkout.  SLURM_SUBMIT_DIR is the repository root at submission time.
+source "${CANYONBENCH_HOME:-${SLURM_SUBMIT_DIR:-$PWD}}/slurm/_common.sh"
 
 DATASET="${CANYONBENCH_DATASET_DIR:-$CANYONBENCH_DATA/generated}"
 REPORTS="$CANYONBENCH_DATA/reports"

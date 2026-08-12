@@ -14,7 +14,9 @@
 # pinned environment resolves. Costs ten minutes and removes the most disruptive
 # class of mid-project failure.
 
-source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
+# Slurm stages this script under /var/spool, so BASH_SOURCE cannot locate the
+# checkout.  SLURM_SUBMIT_DIR is the repository root at submission time.
+source "${CANYONBENCH_HOME:-${SLURM_SUBMIT_DIR:-$PWD}}/slurm/_common.sh"
 
 echo "=== allocation ==="
 id -un; hostname; date -Is
