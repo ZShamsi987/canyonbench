@@ -381,11 +381,11 @@ def _fetch_cdl(
             raise DataValidationError(
                 f"Cached national CDL archive must contain one GeoTIFF, found {members}: {archive}"
             )
-            # GDAL windows this local official archive directly, avoiding one
-            # unreliable CropScape API request for every candidate site.
-            # Keep this as a string. pathlib collapses the required double
-            # slash between /vsizip and an absolute archive path.
-            return f"/vsizip//{archive.resolve().as_posix().lstrip('/')}/{members[0]}"
+        # GDAL windows this local official archive directly, avoiding one
+        # unreliable CropScape API request for every candidate site.
+        # Keep this as a string. pathlib collapses the required double slash
+        # between /vsizip and an absolute archive path.
+        return f"/vsizip//{archive.resolve().as_posix().lstrip('/')}/{members[0]}"
     bounds = transform_bounds("EPSG:4326", "EPSG:5070", *bounds_wgs84, densify_pts=21)
     response = _retry_get(
         client,
