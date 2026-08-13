@@ -639,7 +639,11 @@ def discover_candidates(
             )
             field_positive_projected, field_negative_projected = _discovery_field_points(
                 landcover,
-                half_extent_m=config.negative_screen_half_extent_m,
+                # The maximum oblique camera footprint extends 1.182x the
+                # nominal half extent in its long direction. Field negatives
+                # must be clear across that full envelope, not only a nadir
+                # square, or G2 will correctly reject them later.
+                half_extent_m=config.negative_screen_half_extent_m * 1.182,
                 generator=generator,
             )
             field_positive: list[tuple[float, float, list[str], str]] = [
