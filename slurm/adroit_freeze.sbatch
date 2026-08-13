@@ -2,8 +2,9 @@
 #SBATCH --job-name=cb-freeze
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+# Gate evaluation reads independent source rasters in four bounded workers.
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64G
 #SBATCH --time=02:00:00
 #SBATCH --nice=5000
 #SBATCH --output=logs/%x-%j.out

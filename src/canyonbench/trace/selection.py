@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -126,8 +127,17 @@ def select_sites(
 
     passed: list[SiteSpec] = []
     gate_results: list[GateResult] = []
-    for candidate in sorted(candidates, key=lambda site: site.site_id):
-        results = evaluate_site(candidate, config)
+    ordered = sorted(candidates, key=lambda site: site.site_id)
+    # Each evaluation opens independent, read-only rasters and spends most of
+    # its time in GDAL/OpenCV. Bounded concurrency cuts cohort freeze time
+    # without changing the deterministic candidate or MILP ordering.
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        evaluations = {
+            candidate.site_id: executor.submit(evaluate_site, candidate, config)
+            for candidate in ordered
+        }
+    for candidate in ordered:
+        results = evaluations[candidate.site_id].result()
         gate_results.extend(results)
         target = next(result for result in results if result.feature == candidate.target_class)
         if target.accepted:
