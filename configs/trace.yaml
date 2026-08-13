@@ -25,7 +25,11 @@ dataset:
     validation: 0.2
     test: 0.6
   gates:
-    maximum_date_gap_days: 1095
+    # NHD/TIGER are versioned 2025 snapshots while complete flight-corridor
+    # NAIP coverage is 2021. Five years is a fixed, pre-inference ceiling for
+    # these comparatively stable vector classes; cultivated fields retain the
+    # separate 550-day ceiling below.
+    maximum_date_gap_days: 1826
     field_maximum_date_gap_days: 550
     consensus_tolerance_m: 12.0
     minimum_consensus_fraction: 0.5

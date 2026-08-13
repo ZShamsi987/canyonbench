@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -16,7 +17,7 @@ from canyonbench.trace.derived import (
     grid_occupancy,
     grid_target_pixel_counts,
 )
-from canyonbench.trace.gates import mask_iou
+from canyonbench.trace.gates import evaluate_gates, mask_iou
 from canyonbench.trace.interventions import (
     apply_operator,
     match_distractor,
@@ -28,6 +29,7 @@ from canyonbench.trace.schemas import (
     CameraSpec,
     CaveThresholds,
     DatasetConfig,
+    GateConfig,
     QualityParameters,
     TracePrediction,
     TraceProtocolConfig,
@@ -103,6 +105,44 @@ def test_derived_geometry_and_grid() -> None:
     )
     assert empirical_extinction.extinction
     assert empirical_extinction.case_type == "extinction"
+
+
+def test_cdl_can_supply_authoritative_field_consensus() -> None:
+    """The crop-specific federal source is allowed by the registered G2 rule."""
+
+    image = np.full((64, 64, 3), 20, np.uint8)
+    primary = np.zeros((64, 64), np.uint8)
+    primary[16:48, 20:44] = 1
+    image[primary > 0] = 220
+    site = SimpleNamespace(
+        site_id="site_0001",
+        case_type="positive",
+        imagery_date="2023-01-01",
+        label_date="2023-07-01",
+    )
+
+    field = evaluate_gates(
+        site,
+        "field",
+        primary,
+        np.zeros_like(primary),
+        image,
+        config=GateConfig(),
+        native_resolution_m=2.0,
+        detector_score=np.ones_like(primary),
+    )
+    road = evaluate_gates(
+        site,
+        "road",
+        primary,
+        np.zeros_like(primary),
+        image,
+        config=GateConfig(),
+        native_resolution_m=2.0,
+        detector_score=np.ones_like(primary),
+    )
+    assert field.g2_consensus and field.accepted
+    assert not road.g2_consensus and "G2_SOURCE_DISAGREEMENT" in road.reasons
 
 
 def test_matched_distractor_and_all_operators() -> None:

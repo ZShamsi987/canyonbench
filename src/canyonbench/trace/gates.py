@@ -64,6 +64,14 @@ def evaluate_gates(
     ).any()
     if site.case_type == "negative":
         g2 = negative_clear
+    elif feature == "field":
+        # CDL is the crop-specific federal reference for this operational
+        # ontology.  The specification permits one authoritative source plus
+        # strong geometric criteria; G3 supplies those criteria below. Annual
+        # NLCD remains a recorded secondary comparison, but its 30 m general
+        # land-cover class is not promoted into a false veto of CDL.
+        g2 = bool(primary_binary.any())
+        tolerance_consensus = 1.0 if g2 else 0.0
     else:
         g2 = bool(
             primary_binary.any()
