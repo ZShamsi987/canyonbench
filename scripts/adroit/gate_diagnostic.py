@@ -5,10 +5,22 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from canyonbench.trace.config import load_project_config, load_sites
 from canyonbench.trace.render import evaluate_site
+
+
+def _evaluate_target(site: object, project: object) -> dict[str, object]:
+    """Evaluate one source site; raster I/O and OpenCV release the GIL."""
+
+    results = evaluate_site(site, project.dataset)  # type: ignore[attr-defined]
+    target = next(result for result in results if result.feature == site.target_class)  # type: ignore[attr-defined]
+    return target.model_dump(mode="json") | {  # type: ignore[no-any-return]
+        "group": site.group,  # type: ignore[attr-defined]
+        "target_class": site.target_class,  # type: ignore[attr-defined]
+    }
 
 
 def main() -> None:
@@ -16,19 +28,18 @@ def main() -> None:
     project = load_project_config("configs/trace.yaml")
     sites = load_sites(root / "manifests/trace_prepared_candidates.yaml")
     rows: list[dict[str, object]] = []
-    for index, site in enumerate(sorted(sites, key=lambda item: item.site_id), start=1):
-        target = next(
-            result
-            for result in evaluate_site(site, project.dataset)
-            if result.feature == site.target_class
-        )
-        row = target.model_dump(mode="json") | {
-            "group": site.group,
-            "target_class": site.target_class,
+    ordered = sorted(sites, key=lambda item: item.site_id)
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(_evaluate_target, site, project): site.site_id for site in ordered
         }
-        rows.append(row)
-        reasons = ",".join(target.reasons) or "PASS"
-        print(f"[{index}/{len(sites)}] {site.site_id} {target.accepted} {reasons}", flush=True)
+        for index, future in enumerate(as_completed(futures), start=1):
+            row = future.result()
+            rows.append(row)
+            reasons = ",".join(str(reason) for reason in row["reasons"]) or "PASS"
+            print(
+                f"[{index}/{len(ordered)}] {row['site_id']} {row['accepted']} {reasons}", flush=True
+            )
 
     summary: defaultdict[tuple[str, str, str], Counter[str]] = defaultdict(Counter)
     for row in rows:
