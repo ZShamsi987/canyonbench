@@ -338,6 +338,10 @@ def _fetch_nlcd(
     response = _retry_get(
         client,
         base,
+        # The public WCS intermittently returns 500/timeout responses for
+        # otherwise valid windows. This is bounded (1+2+4+8+8 seconds) and
+        # avoids discarding a site solely because of a transient gateway fault.
+        attempts=6,
         params={
             "service": "WCS",
             "version": "1.0.0",
@@ -1136,6 +1140,7 @@ def _fetch_3dep(
     export = _retry_get(
         client,
         f"{THREE_DEP_SERVICE}/exportImage",
+        attempts=6,
         params={
             "f": "json",
             "bbox": ",".join(str(value) for value in grid.bounds),
@@ -1150,7 +1155,7 @@ def _fetch_3dep(
     href = export.get("href")
     if not isinstance(href, str):
         raise DataValidationError(f"3DEP export failed: {export}")
-    _atomic_bytes(raw, _retry_get(client, href).content)
+    _atomic_bytes(raw, _retry_get(client, href, attempts=6).content)
     profile = grid.profile(dtype="float32", count=1, nodata=-9999)
     temporary = destination.with_name(f".{destination.name}.partial")
     with rasterio.open(raw) as source, rasterio.open(temporary, "w", **profile) as output:
