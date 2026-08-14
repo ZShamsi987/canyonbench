@@ -807,6 +807,14 @@ def _materialize_naip_cogs(
         CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif,.tiff",
         GDAL_HTTP_MULTIRANGE="YES",
         GDAL_HTTP_MERGE_CONSECUTIVE_RANGES="YES",
+        # GDAL's default COG requests can wait indefinitely after a connection
+        # has been established.  The official ImageServer is attempted first;
+        # this mirror is the bounded fallback, not a reason to strand an
+        # otherwise resumable serial acquisition on one public tile.
+        GDAL_HTTP_CONNECTTIMEOUT="20",
+        GDAL_HTTP_TIMEOUT="60",
+        GDAL_HTTP_MAX_RETRY="2",
+        GDAL_HTTP_RETRY_DELAY="2",
     )
     with environment, rasterio.open(temporary, "w", **profile) as output:
         first = True
@@ -852,6 +860,9 @@ def _naip_export_chunk(
     right = left + window.width * grid.resolution_m
     top = grid.top - window.row_off * grid.resolution_m
     bottom = top - window.height * grid.resolution_m
+    # The COG fallback below covers a temporarily slow ImageServer tile.  One
+    # bounded ImageServer attempt gets us to that independent delivery path in
+    # a minute rather than serially multiplying a 60-second HTTP timeout.
     payload = _retry_get(
         client,
         f"{NAIP_SERVICE}/exportImage",
@@ -874,11 +885,12 @@ def _naip_export_chunk(
                 separators=(",", ":"),
             ),
         },
+        attempts=1,
     ).json()
     href = payload.get("href")
     if not isinstance(href, str):
         raise DataValidationError(f"NAIP export failed: {payload}")
-    response = _retry_get(client, href)
+    response = _retry_get(client, href, attempts=1)
     if not response.content.startswith((b"II", b"MM")):
         raise DataValidationError(f"NAIP export was not a TIFF: {href}")
     return window, response.content
