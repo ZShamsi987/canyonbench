@@ -23,6 +23,12 @@ CANDIDATES="$CANYONBENCH_DATA/manifests/trace_candidates.yaml"
 PREPARED="$CANYONBENCH_DATA/manifests/trace_prepared_candidates.yaml"
 REPORTS="$CANYONBENCH_DATA/reports"
 LOGS="$CANYONBENCH_DATA/logs"
+# Public WCS/COG services occasionally leave one request open indefinitely.
+# Isolate each candidate in a child process: a timed-out tile is recorded in
+# the log and omitted from the prepared manifest, while every later candidate
+# continues.  This is intentionally sequential; it is not a parallel scraper.
+ACQUIRE_TIMEOUT_SECONDS="${ACQUIRE_TIMEOUT_SECONDS:-900}"
+ACQUIRE_START="${CANYONBENCH_ACQUIRE_START:-0}"
 mkdir -p "$REPORTS" "$LOGS" "$CANYONBENCH_DATA/cache/site-discovery"
 
 wait_for_job() {
@@ -57,11 +63,25 @@ submit_gate_diagnostic() {
 }
 
 acquire_pool() {
-  local pass="$1"
-  echo "== acquisition pass $pass: $(date -Is) =="
-  nice -n 19 uv run --frozen canyonbench trace acquire-sources \
-    "$SOURCES_CONFIG" "$CANDIDATES" "$CANYONBENCH_DATA/sources" "$PREPARED" \
-    "$REPORTS/source-acquisition-supervised-pass-${pass}.json"
+  local pass="$1" start="${2:-$ACQUIRE_START}" count index report
+  count="$("$CANYONBENCH_HOME/.venv/bin/python" - "$CANDIDATES" <<'PY'
+from pathlib import Path
+import sys
+import yaml
+print(len(yaml.safe_load(Path(sys.argv[1]).read_text(encoding="utf-8"))["candidates"]))
+PY
+)"
+  echo "== acquisition pass $pass: candidates $start through $((count - 1)), $(date -Is) =="
+  for ((index = start; index < count; index += 1)); do
+    report="$REPORTS/source-acquisition-supervised-pass-${pass}-index-${index}.json"
+    echo "== acquisition pass $pass, candidate index $index/$((count - 1)) =="
+    if ! timeout --kill-after=60s "${ACQUIRE_TIMEOUT_SECONDS}s" \
+      nice -n 19 uv run --frozen canyonbench trace acquire-sources \
+        "$SOURCES_CONFIG" "$CANDIDATES" "$CANYONBENCH_DATA/sources" "$PREPARED" \
+        "$report" --start "$index" --limit 1; then
+      echo "Candidate index $index exceeded ${ACQUIRE_TIMEOUT_SECONDS}s or exited unexpectedly; continuing."
+    fi
+  done
 }
 
 refresh_prepared_manifest() {
@@ -95,12 +115,21 @@ run_cohort() {
 acquire_pool 1
 if ! run_cohort; then
   echo "== first cohort did not freeze; appending deterministic expansion =="
+  original_count="$("$CANYONBENCH_HOME/.venv/bin/python" - "$CANDIDATES" <<'PY'
+from pathlib import Path
+import sys
+import yaml
+print(len(yaml.safe_load(Path(sys.argv[1]).read_text(encoding="utf-8"))["candidates"]))
+PY
+)"
   expanded="$CANYONBENCH_DATA/manifests/trace_candidates.expanded.yaml"
   "$CANYONBENCH_HOME/.venv/bin/python" scripts/adroit/extend_candidates.py \
     "$SOURCES_CONFIG" "$CANDIDATES" "$expanded" \
     --cache-dir "$CANYONBENCH_DATA/cache/site-discovery" --multiplier 5.0
   mv "$expanded" "$CANDIDATES"
-  acquire_pool 2
+  # The old pool has already been attempted.  Only materialize the appended
+  # deterministic candidates, including their corrected field-negative screen.
+  acquire_pool 2 "$original_count"
   run_cohort
 fi
 
