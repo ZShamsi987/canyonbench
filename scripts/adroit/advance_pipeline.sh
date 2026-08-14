@@ -27,7 +27,7 @@ LOGS="$CANYONBENCH_DATA/logs"
 # Isolate each candidate in a child process: a timed-out tile is recorded in
 # the log and omitted from the prepared manifest, while every later candidate
 # continues.  This is intentionally sequential; it is not a parallel scraper.
-ACQUIRE_TIMEOUT_SECONDS="${ACQUIRE_TIMEOUT_SECONDS:-900}"
+ACQUIRE_TIMEOUT_SECONDS="${ACQUIRE_TIMEOUT_SECONDS:-420}"
 ACQUIRE_START="${CANYONBENCH_ACQUIRE_START:-0}"
 mkdir -p "$REPORTS" "$LOGS" "$CANYONBENCH_DATA/cache/site-discovery"
 
@@ -75,8 +75,11 @@ PY
   for ((index = start; index < count; index += 1)); do
     report="$REPORTS/source-acquisition-supervised-pass-${pass}-index-${index}.json"
     echo "== acquisition pass $pass, candidate index $index/$((count - 1)) =="
-    if ! timeout --kill-after=60s "${ACQUIRE_TIMEOUT_SECONDS}s" \
-      nice -n 19 uv run --frozen canyonbench trace acquire-sources \
+    # Call the pinned virtualenv entry point directly.  `uv run` intercepts
+    # SIGTERM while a GDAL worker is blocked, which leaves `timeout` waiting;
+    # KILL makes the individual candidate boundary reliable.
+    if ! timeout --signal=KILL "${ACQUIRE_TIMEOUT_SECONDS}s" \
+      nice -n 19 "$CANYONBENCH_HOME/.venv/bin/canyonbench" trace acquire-sources \
         "$SOURCES_CONFIG" "$CANDIDATES" "$CANYONBENCH_DATA/sources" "$PREPARED" \
         "$report" --start "$index" --limit 1; then
       echo "Candidate index $index exceeded ${ACQUIRE_TIMEOUT_SECONDS}s or exited unexpectedly; continuing."
