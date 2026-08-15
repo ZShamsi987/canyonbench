@@ -52,6 +52,7 @@ from canyonbench.trace.schemas import (
 NAIP_STAC_SEARCH = "https://planetarycomputer.microsoft.com/api/stac/v1/search"
 PLANETARY_COMPUTER_SIGN = "https://planetarycomputer.microsoft.com/api/sas/v1/sign"
 NAIP_COLLECTION = "naip"
+NAIP_EXPORT_CHUNK_PX = 2500
 NAIP_TERMS = (
     "https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map"
 )
@@ -969,10 +970,19 @@ def _materialize_naip(
     profile = grid.profile(dtype="uint8", count=3, nodata=0)
     profile.update({"compress": "jpeg", "jpeg_quality": 90, "photometric": "YCBCR"})
     profile.pop("predictor", None)
+    # The public ImageServer commonly completes a 2,500-pixel locked export
+    # promptly, while a 4,000-pixel export can remain queued indefinitely.
+    # This is only a transport subdivision: every window is written onto the
+    # same fixed 2 m source grid with no change to content or resampling.
     windows = [
-        Window(column, row, min(4000, grid.width - column), min(4000, grid.height - row))
-        for row in range(0, grid.height, 4000)
-        for column in range(0, grid.width, 4000)
+        Window(
+            column,
+            row,
+            min(NAIP_EXPORT_CHUNK_PX, grid.width - column),
+            min(NAIP_EXPORT_CHUNK_PX, grid.height - row),
+        )
+        for row in range(0, grid.height, NAIP_EXPORT_CHUNK_PX)
+        for column in range(0, grid.width, NAIP_EXPORT_CHUNK_PX)
     ]
     owns_client = client is None
     active = client or _http_client()
