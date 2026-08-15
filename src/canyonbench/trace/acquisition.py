@@ -11,7 +11,6 @@ import time
 import zipfile
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -32,7 +31,8 @@ from rasterio.warp import (  # type: ignore[import-untyped]
     transform_bounds,
     transform_geom,
 )
-from rasterio.windows import Window, bounds as window_bounds  # type: ignore[import-untyped]
+from rasterio.windows import Window  # type: ignore[import-untyped]
+from rasterio.windows import bounds as window_bounds
 from shapely import box  # type: ignore[import-untyped]
 from shapely.geometry import Polygon, shape  # type: ignore[import-untyped]
 from shapely.geometry.base import BaseGeometry  # type: ignore[import-untyped]
@@ -993,18 +993,14 @@ def _materialize_naip(
         with rasterio.open(temporary, "w", **profile) as output:
             for offset in range(0, len(windows), 4):
                 batch = windows[offset : offset + 4]
-                with ThreadPoolExecutor(max_workers=len(batch)) as executor:
-                    chunks = list(
-                        executor.map(
-                            lambda window: _naip_export_chunk(
-                                active,
-                                grid,
-                                year,
-                                window,
-                            ),
-                            batch,
-                        )
-                    )
+                # The public ImageServer can leave simultaneous TLS reads
+                # pending indefinitely even though each locked request is
+                # fast by itself.  Keep this source's transport serial; the
+                # source grid and output are unchanged, and acquisition is
+                # deliberately a single niced login-node workload.
+                chunks = [
+                    _naip_export_chunk(active, grid, year, window) for window in batch
+                ]
                 for window, payload in chunks:
                     with MemoryFile(payload) as memory, memory.open() as source:
                         if source.count < 3:
