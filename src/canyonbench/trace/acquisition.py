@@ -32,7 +32,7 @@ from rasterio.warp import (  # type: ignore[import-untyped]
     transform_bounds,
     transform_geom,
 )
-from rasterio.windows import Window  # type: ignore[import-untyped]
+from rasterio.windows import Window, bounds as window_bounds  # type: ignore[import-untyped]
 from shapely import box  # type: ignore[import-untyped]
 from shapely.geometry import Polygon, shape  # type: ignore[import-untyped]
 from shapely.geometry.base import BaseGeometry  # type: ignore[import-untyped]
@@ -855,8 +855,6 @@ def _naip_export_chunk(
     grid: _Grid,
     year: int,
     window: Window,
-    *,
-    raster_ids: Sequence[int] = (),
 ) -> tuple[Window, bytes]:
     left = grid.left + window.col_off * grid.resolution_m
     right = left + window.width * grid.resolution_m
@@ -865,6 +863,10 @@ def _naip_export_chunk(
     # The COG fallback below covers a temporarily slow ImageServer tile.  One
     # bounded ImageServer attempt gets us to that independent delivery path in
     # a minute rather than serially multiplying a 60-second HTTP timeout.
+    try:
+        raster_ids = _naip_export_raster_ids(client, grid, year, window=window)
+    except DataValidationError:
+        raster_ids = []
     mosaic_rule: dict[str, Any]
     if raster_ids:
         # Locking the exact rasters that intersect this site bypasses the
@@ -911,16 +913,22 @@ def _naip_export_raster_ids(
     client: httpx.Client,
     grid: _Grid,
     year: int,
+    *,
+    window: Window | None = None,
 ) -> list[int]:
     """Return the USGS NAIP rasters covering one frozen source footprint."""
 
+    bounds = grid.wgs84_bounds
+    if window is not None:
+        projected = window_bounds(window, grid.transform)
+        bounds = transform_bounds(grid.crs, "EPSG:4326", *projected)
     response = _retry_get(
         client,
         f"{NAIP_SERVICE}/query",
         params={
             "f": "json",
             "where": f"Year = {year}",
-            "geometry": ",".join(str(value) for value in grid.wgs84_bounds),
+            "geometry": ",".join(str(value) for value in bounds),
             "geometryType": "esriGeometryEnvelope",
             "inSR": "4326",
             "spatialRel": "esriSpatialRelIntersects",
@@ -969,13 +977,6 @@ def _materialize_naip(
     owns_client = client is None
     active = client or _http_client()
     try:
-        # A failed ID query merely falls back to the registered year mosaic;
-        # it must never reject a candidate that the independently frozen STAC
-        # items already established as fully covered.
-        try:
-            raster_ids = _naip_export_raster_ids(active, grid, year)
-        except DataValidationError:
-            raster_ids = []
         with rasterio.open(temporary, "w", **profile) as output:
             for offset in range(0, len(windows), 4):
                 batch = windows[offset : offset + 4]
@@ -987,7 +988,6 @@ def _materialize_naip(
                                 grid,
                                 year,
                                 window,
-                                raster_ids=raster_ids,
                             ),
                             batch,
                         )
