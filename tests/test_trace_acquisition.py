@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import httpx
 import numpy as np
 import rasterio  # type: ignore[import-untyped]
 import yaml
@@ -12,6 +13,7 @@ from canyonbench.trace.acquisition import (
     _feature_id,
     _Grid,
     _materialize_naip,
+    _naip_export_raster_ids,
     _spaced,
     _write_class_mask,
     write_candidate_manifest,
@@ -71,6 +73,22 @@ def test_spaced_selection_is_seeded_and_preserves_region() -> None:
     assert first == second
     assert len(first) == 3
     assert all(row[4].startswith("region_") for row in first)
+
+
+def test_naip_export_query_locks_only_integer_raster_ids() -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(dict(request.url.params))
+        return httpx.Response(200, json={"objectIds": [19, "20", 3, 19]})
+
+    grid = _Grid(-111.0, 36.7, resolution_m=2.0, half_extent_m=20.0)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        ids = _naip_export_raster_ids(client, grid, 2023)
+
+    assert ids == [3, 19]
+    assert captured["where"] == "Year = 2023"
+    assert captured["geometryType"] == "esriGeometryEnvelope"
 
 
 def test_local_naip_mosaic_and_class_alignment(tmp_path: Path) -> None:
