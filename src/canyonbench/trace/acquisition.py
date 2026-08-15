@@ -171,11 +171,15 @@ def _retry_get(
     *,
     params: Any = None,
     attempts: int = 3,
+    timeout: httpx.Timeout | float | None = None,
 ) -> httpx.Response:
     error: BaseException | None = None
     for attempt in range(attempts):
         try:
-            response = client.get(url, params=params)
+            options: dict[str, Any] = {"params": params}
+            if timeout is not None:
+                options["timeout"] = timeout
+            response = client.get(url, **options)
             response.raise_for_status()
             return response
         except httpx.HTTPError as exc:
@@ -888,6 +892,10 @@ def _naip_export_chunk(
             "sortField": "acquisition_date",
             "ascending": False,
         }
+    # A healthy locked export returns this metadata in well under a second.
+    # Keep an intermittent ImageServer queue from consuming the full general
+    # source timeout before the independent COG fallback is considered.
+    export_timeout = httpx.Timeout(15, connect=10)
     payload = _retry_get(
         client,
         f"{NAIP_SERVICE}/exportImage",
@@ -902,12 +910,13 @@ def _naip_export_chunk(
             "interpolation": "RSP_BilinearInterpolation",
             "mosaicRule": json.dumps(mosaic_rule, separators=(",", ":")),
         },
-        attempts=1,
+        attempts=3,
+        timeout=export_timeout,
     ).json()
     href = payload.get("href")
     if not isinstance(href, str):
         raise DataValidationError(f"NAIP export failed: {payload}")
-    response = _retry_get(client, href, attempts=1)
+    response = _retry_get(client, href, attempts=3, timeout=export_timeout)
     if not response.content.startswith((b"II", b"MM")):
         raise DataValidationError(f"NAIP export was not a TIFF: {href}")
     return window, response.content
