@@ -881,7 +881,10 @@ def _naip_export_chunk(
     else:
         mosaic_rule = {
             "mosaicMethod": "esriMosaicAttribute",
-            "where": f"Year = {year}",
+            # ImageServer also returns incomplete/overview records that can
+            # intersect the envelope but have no usable image payload.  Only
+            # category 1 is an acquired primary NAIP raster.
+            "where": f"Year = {year} AND Category = 1",
             "sortField": "acquisition_date",
             "ascending": False,
         }
@@ -928,7 +931,7 @@ def _naip_export_raster_ids(
         f"{NAIP_SERVICE}/query",
         params={
             "f": "json",
-            "where": f"Year = {year}",
+            "where": f"Year = {year} AND Category = 1",
             "geometry": ",".join(str(value) for value in bounds),
             "geometryType": "esriGeometryEnvelope",
             "inSR": "4326",

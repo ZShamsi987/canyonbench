@@ -87,7 +87,7 @@ def test_naip_export_query_locks_only_integer_raster_ids() -> None:
         ids = _naip_export_raster_ids(client, grid, 2023)
 
     assert ids == [3, 19]
-    assert captured["where"] == "Year = 2023"
+    assert captured["where"] == "Year = 2023 AND Category = 1"
     assert captured["geometryType"] == "esriGeometryEnvelope"
 
 
