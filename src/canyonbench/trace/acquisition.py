@@ -87,6 +87,13 @@ THREE_DEP_SERVICE = (
 THREE_DEP_TERMS = "https://www.usgs.gov/3d-elevation-program"
 ACCESS_DATE = date.today().isoformat()
 
+
+def _naip_trace(message: str) -> None:
+    """Emit NAIP transport diagnostics only when explicitly enabled."""
+
+    if os.getenv("CANYONBENCH_NAIP_TRACE"):
+        print(f"[naip] {message}", flush=True)
+
 WATER_LAYERS = (9, 12)
 ROAD_LAYERS = (2, 3)
 CULTIVATED_CDL_CODES = frozenset(
@@ -861,6 +868,10 @@ def _naip_export_chunk(
     year: int,
     window: Window,
 ) -> tuple[Window, bytes]:
+    label = (
+        f"{int(window.col_off)},{int(window.row_off)} "
+        f"{int(window.width)}x{int(window.height)}"
+    )
     left = grid.left + window.col_off * grid.resolution_m
     right = left + window.width * grid.resolution_m
     top = grid.top - window.row_off * grid.resolution_m
@@ -869,9 +880,11 @@ def _naip_export_chunk(
     # bounded ImageServer attempt gets us to that independent delivery path in
     # a minute rather than serially multiplying a 60-second HTTP timeout.
     try:
+        _naip_trace(f"{label}: querying locked raster IDs")
         raster_ids = _naip_export_raster_ids(client, grid, year, window=window)
     except DataValidationError:
         raster_ids = []
+    _naip_trace(f"{label}: locked raster IDs={raster_ids}")
     mosaic_rule: dict[str, Any]
     if raster_ids:
         # Locking the exact rasters that intersect this site bypasses the
@@ -896,6 +909,7 @@ def _naip_export_chunk(
     # Keep an intermittent ImageServer queue from consuming the full general
     # source timeout before the independent COG fallback is considered.
     export_timeout = httpx.Timeout(15, connect=10)
+    _naip_trace(f"{label}: requesting export metadata")
     payload = _retry_get(
         client,
         f"{NAIP_SERVICE}/exportImage",
@@ -916,9 +930,11 @@ def _naip_export_chunk(
     href = payload.get("href")
     if not isinstance(href, str):
         raise DataValidationError(f"NAIP export failed: {payload}")
+    _naip_trace(f"{label}: downloading export")
     response = _retry_get(client, href, attempts=3, timeout=export_timeout)
     if not response.content.startswith((b"II", b"MM")):
         raise DataValidationError(f"NAIP export was not a TIFF: {href}")
+    _naip_trace(f"{label}: received {len(response.content)} bytes")
     return window, response.content
 
 
@@ -1002,6 +1018,9 @@ def _materialize_naip(
         with rasterio.open(temporary, "w", **profile) as output:
             for offset in range(0, len(windows), 4):
                 batch = windows[offset : offset + 4]
+                _naip_trace(
+                    f"export batch {offset + 1}-{offset + len(batch)} of {len(windows)}"
+                )
                 # The public ImageServer can leave simultaneous TLS reads
                 # pending indefinitely even though each locked request is
                 # fast by itself.  Keep this source's transport serial; the
@@ -1011,6 +1030,9 @@ def _materialize_naip(
                     _naip_export_chunk(active, grid, year, window) for window in batch
                 ]
                 for window, payload in chunks:
+                    _naip_trace(
+                        f"writing {int(window.col_off)},{int(window.row_off)}"
+                    )
                     with MemoryFile(payload) as memory, memory.open() as source:
                         if source.count < 3:
                             raise DataValidationError("NAIP export has fewer than three bands")
