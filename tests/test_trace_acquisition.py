@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import httpx
 import numpy as np
+import pytest
 import rasterio  # type: ignore[import-untyped]
 import yaml
 from rasterio.transform import from_origin  # type: ignore[import-untyped]
 from rasterio.windows import Window  # type: ignore[import-untyped]
 
+from canyonbench.exceptions import DataValidationError
 from canyonbench.trace.acquisition import (
     _feature_id,
     _Grid,
     _materialize_naip,
     _naip_export_chunk,
     _naip_export_raster_ids,
+    _retry_get,
     _spaced,
     _write_class_mask,
     write_candidate_manifest,
@@ -112,6 +116,23 @@ def test_naip_export_requests_locked_tiff_directly() -> None:
     export = requests[-1]
     assert export.url.params["f"] == "image"
     assert json.loads(export.url.params["mosaicRule"])["lockRasterIds"] == [3, 19]
+
+
+def test_retry_get_enforces_wall_clock_limit() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        time.sleep(0.05)
+        return httpx.Response(200, content=b"late")
+
+    with (
+        httpx.Client(transport=httpx.MockTransport(handler)) as client,
+        pytest.raises(DataValidationError, match="wall-clock limit"),
+    ):
+        _retry_get(
+            client,
+            "https://example.test/slow",
+            attempts=1,
+            wall_clock_limit=0.01,
+        )
 
 
 def test_local_naip_mosaic_and_class_alignment(tmp_path: Path) -> None:

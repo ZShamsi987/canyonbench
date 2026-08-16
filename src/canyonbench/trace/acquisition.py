@@ -6,11 +6,14 @@ import hashlib
 import json
 import math
 import os
+import signal
 import tempfile
+import threading
 import time
 import zipfile
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
+from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -172,6 +175,38 @@ def _http_client() -> httpx.Client:
     )
 
 
+@contextmanager
+def _wall_clock_limit(seconds: float | None) -> Iterable[None]:
+    """Interrupt one synchronous request after an absolute deadline.
+
+    ``httpx`` applies its read limit between incoming bytes, so a server that
+    trickles a response can otherwise remain alive indefinitely.  Acquisition
+    runs synchronously on Unix login nodes; retain the normal HTTP timeout in
+    every other context where process-level signals are unavailable.
+    """
+
+    if (
+        seconds is None
+        or seconds <= 0
+        or threading.current_thread() is not threading.main_thread()
+        or not hasattr(signal, "setitimer")
+        or not hasattr(signal, "SIGALRM")
+    ):
+        yield
+        return
+    def expired(_signum: int, _frame: Any) -> None:
+        raise TimeoutError(f"Source request exceeded {seconds:g}s wall-clock limit")
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, expired)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, *previous_timer)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
 def _retry_get(
     client: httpx.Client,
     url: str,
@@ -179,6 +214,7 @@ def _retry_get(
     params: Any = None,
     attempts: int = 3,
     timeout: httpx.Timeout | float | None = None,
+    wall_clock_limit: float | None = None,
 ) -> httpx.Response:
     error: BaseException | None = None
     for attempt in range(attempts):
@@ -186,10 +222,11 @@ def _retry_get(
             options: dict[str, Any] = {"params": params}
             if timeout is not None:
                 options["timeout"] = timeout
-            response = client.get(url, **options)
+            with _wall_clock_limit(wall_clock_limit):
+                response = client.get(url, **options)
             response.raise_for_status()
             return response
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, TimeoutError) as exc:
             error = exc
             if attempt + 1 < attempts:
                 time.sleep(min(2**attempt, 8))
@@ -928,6 +965,7 @@ def _naip_export_chunk(
         },
         attempts=3,
         timeout=export_timeout,
+        wall_clock_limit=20,
     )
     if not response.content.startswith((b"II", b"MM")):
         raise DataValidationError("NAIP export was not a TIFF")
