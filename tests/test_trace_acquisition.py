@@ -116,6 +116,7 @@ def test_naip_export_requests_locked_tiff_directly() -> None:
     export = requests[-1]
     assert export.url.params["f"] == "image"
     assert json.loads(export.url.params["mosaicRule"])["lockRasterIds"] == [3, 19]
+    assert export.headers["connection"] == "close"
 
 
 def test_retry_get_enforces_wall_clock_limit() -> None:

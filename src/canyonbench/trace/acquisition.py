@@ -212,6 +212,7 @@ def _retry_get(
     url: str,
     *,
     params: Any = None,
+    headers: dict[str, str] | None = None,
     attempts: int = 3,
     timeout: httpx.Timeout | float | None = None,
     wall_clock_limit: float | None = None,
@@ -219,7 +220,7 @@ def _retry_get(
     error: BaseException | None = None
     for attempt in range(attempts):
         try:
-            options: dict[str, Any] = {"params": params}
+            options: dict[str, Any] = {"params": params, "headers": headers}
             if timeout is not None:
                 options["timeout"] = timeout
             with _wall_clock_limit(wall_clock_limit):
@@ -913,9 +914,8 @@ def _naip_export_chunk(
     right = left + window.width * grid.resolution_m
     top = grid.top - window.row_off * grid.resolution_m
     bottom = top - window.height * grid.resolution_m
-    # The COG fallback below covers a temporarily slow ImageServer tile.  One
-    # bounded ImageServer attempt gets us to that independent delivery path in
-    # a minute rather than serially multiplying a 60-second HTTP timeout.
+    # Keep each locked ImageServer operation independently bounded rather than
+    # allowing one delayed tile to stall this complete source grid.
     try:
         _naip_trace(f"{label}: querying locked raster IDs")
         raster_ids = _naip_export_raster_ids(client, grid, year, window=window)
@@ -946,7 +946,7 @@ def _naip_export_chunk(
     # following it.  The latter can start a connection that trickles forever
     # even when the locked ImageServer export itself is ready immediately.
     # Keep an intermittent ImageServer queue from consuming the full general
-    # source timeout before the independent COG fallback is considered.
+    # source timeout before this bounded source attempt can be retried.
     export_timeout = httpx.Timeout(15, connect=10)
     _naip_trace(f"{label}: requesting locked TIFF")
     response = _retry_get(
@@ -963,6 +963,11 @@ def _naip_export_chunk(
             "interpolation": "RSP_BilinearInterpolation",
             "mosaicRule": json.dumps(mosaic_rule, separators=(",", ":")),
         },
+        # The ImageServer begins to trickle on a reused connection after a
+        # number of otherwise valid exports.  Every tile is self-contained,
+        # so closing it after the response trades a small TLS setup cost for
+        # reliable, bounded source acquisition.
+        headers={"Connection": "close"},
         attempts=3,
         timeout=export_timeout,
         wall_clock_limit=20,
@@ -1397,26 +1402,27 @@ def acquire_candidate(
         imagery = directory / "imagery.tif"
         naip_year, naip_items = _naip_items(active, grid, config.preferred_naip_years)
         imagery_delivery_url = NAIP_SERVICE
-        try:
-            _materialize_naip(
-                naip_items,
-                grid,
-                imagery,
-                year=naip_year,
-                client=active,
-            )
-        except DataValidationError as export_error:
-            # ImageServer export tiles occasionally contain nodata holes even
-            # when STAC reports full NAIP coverage. Reuse the same frozen NAIP
-            # items via their signed Planetary Computer COG mirrors.
+        for export_attempt in range(2):
             try:
-                _materialize_naip_cogs(naip_items, grid, imagery, client=active)
-            except BaseException as cog_error:
-                raise DataValidationError(
-                    "NAIP export and signed COG fallback both failed: "
-                    f"export={export_error}; cog={cog_error}"
-                ) from cog_error
-            imagery_delivery_url = NAIP_STAC_SEARCH
+                _materialize_naip(
+                    naip_items,
+                    grid,
+                    imagery,
+                    year=naip_year,
+                    client=active,
+                )
+                break
+            except DataValidationError:
+                # A public ImageServer tile can fail transiently near the end
+                # of an otherwise healthy grid.  Replay the same locked,
+                # reproducible export once; the COG fallback is intentionally
+                # avoided here because GDAL can consume unbounded login-node
+                # memory for this 25 km grid and prevents failure reporting.
+                imagery.unlink(missing_ok=True)
+                imagery.with_name(f".{imagery.name}.partial").unlink(missing_ok=True)
+                if export_attempt:
+                    raise
+                time.sleep(5)
         naip_ids = [str(item["id"]) for item in naip_items]
         acquisition_dates = sorted(
             str(item.get("properties", {}).get("datetime", ""))[:10]
