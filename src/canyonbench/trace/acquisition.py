@@ -905,16 +905,18 @@ def _naip_export_chunk(
             "sortField": "acquisition_date",
             "ascending": False,
         }
-    # A healthy locked export returns this metadata in well under a second.
+    # Request the TIFF directly rather than first receiving an ``href`` and
+    # following it.  The latter can start a connection that trickles forever
+    # even when the locked ImageServer export itself is ready immediately.
     # Keep an intermittent ImageServer queue from consuming the full general
     # source timeout before the independent COG fallback is considered.
     export_timeout = httpx.Timeout(15, connect=10)
-    _naip_trace(f"{label}: requesting export metadata")
-    payload = _retry_get(
+    _naip_trace(f"{label}: requesting locked TIFF")
+    response = _retry_get(
         client,
         f"{NAIP_SERVICE}/exportImage",
         params={
-            "f": "json",
+            "f": "image",
             "bbox": f"{left},{bottom},{right},{top}",
             "bboxSR": str(grid.epsg),
             "imageSR": str(grid.epsg),
@@ -926,14 +928,9 @@ def _naip_export_chunk(
         },
         attempts=3,
         timeout=export_timeout,
-    ).json()
-    href = payload.get("href")
-    if not isinstance(href, str):
-        raise DataValidationError(f"NAIP export failed: {payload}")
-    _naip_trace(f"{label}: downloading export")
-    response = _retry_get(client, href, attempts=3, timeout=export_timeout)
+    )
     if not response.content.startswith((b"II", b"MM")):
-        raise DataValidationError(f"NAIP export was not a TIFF: {href}")
+        raise DataValidationError("NAIP export was not a TIFF")
     _naip_trace(f"{label}: received {len(response.content)} bytes")
     return window, response.content
 

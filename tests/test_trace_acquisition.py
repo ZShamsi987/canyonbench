@@ -8,11 +8,13 @@ import numpy as np
 import rasterio  # type: ignore[import-untyped]
 import yaml
 from rasterio.transform import from_origin  # type: ignore[import-untyped]
+from rasterio.windows import Window  # type: ignore[import-untyped]
 
 from canyonbench.trace.acquisition import (
     _feature_id,
     _Grid,
     _materialize_naip,
+    _naip_export_chunk,
     _naip_export_raster_ids,
     _spaced,
     _write_class_mask,
@@ -89,6 +91,27 @@ def test_naip_export_query_locks_only_integer_raster_ids() -> None:
     assert ids == [3, 19]
     assert captured["where"] == "Year = 2023 AND Category = 1"
     assert captured["geometryType"] == "esriGeometryEnvelope"
+
+
+def test_naip_export_requests_locked_tiff_directly() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/query"):
+            return httpx.Response(200, json={"objectIds": [19, 3]})
+        if request.url.path.endswith("/exportImage"):
+            return httpx.Response(200, content=b"II*\\x00mock-tiff")
+        raise AssertionError(request.url)
+
+    grid = _Grid(-111.0, 36.7, resolution_m=2.0, half_extent_m=20.0)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        _, payload = _naip_export_chunk(client, grid, 2023, Window(0, 0, 20, 20))
+
+    assert payload.startswith(b"II")
+    export = requests[-1]
+    assert export.url.params["f"] == "image"
+    assert json.loads(export.url.params["mosaicRule"])["lockRasterIds"] == [3, 19]
 
 
 def test_local_naip_mosaic_and_class_alignment(tmp_path: Path) -> None:
