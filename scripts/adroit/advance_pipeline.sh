@@ -24,10 +24,12 @@ PREPARED="$CANYONBENCH_DATA/manifests/trace_prepared_candidates.yaml"
 REPORTS="$CANYONBENCH_DATA/reports"
 LOGS="$CANYONBENCH_DATA/logs"
 # Public WCS/COG services occasionally leave one request open indefinitely.
-# Isolate each candidate in a child process: a timed-out tile is recorded in
-# the log and omitted from the prepared manifest, while every later candidate
-# continues.  This is intentionally sequential; it is not a parallel scraper.
-ACQUIRE_TIMEOUT_SECONDS="${ACQUIRE_TIMEOUT_SECONDS:-420}"
+# The acquisition client bounds individual NAIP requests, but one complete
+# 25 km source grid can legitimately need many tiles.  Isolate each candidate
+# in a child process with enough time to finish that valid work; a timed-out
+# site is omitted while every later candidate continues.  This is intentionally
+# sequential; it is not a parallel scraper.
+ACQUIRE_TIMEOUT_SECONDS="${ACQUIRE_TIMEOUT_SECONDS:-1800}"
 ACQUIRE_START="${CANYONBENCH_ACQUIRE_START:-0}"
 mkdir -p "$REPORTS" "$LOGS" "$CANYONBENCH_DATA/cache/site-discovery"
 
