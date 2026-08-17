@@ -33,6 +33,7 @@ from canyonbench.trace.acquisition import (
     _haversine_m,
     _io_lulc_asset,
     _mask_profile,
+    _materialize_cdl_window,
     _nlcd_url,
     _query_osm_roads,
     _raster_matches,
@@ -546,40 +547,53 @@ def test_lulc_asset_signing_fails_closed_at_each_step() -> None:
 
 
 def test_field_discovery_separates_cultivated_cores_from_clear_footprints(tmp_path) -> None:
-    values = np.zeros((120, 120), np.uint8)
-    values[10:60, 10:60] = 82  # cultivated block
-    path = tmp_path / "cdl.tif"
-    with rasterio.open(
-        path,
-        "w",
-        driver="GTiff",
-        width=120,
-        height=120,
-        count=1,
-        dtype="uint8",
-        crs="EPSG:5070",
-        transform=from_origin(-1_200_000, 1_900_000, 30, 30),
-    ) as output:
-        output.write(values, 1)
+    cdl_values = np.zeros((120, 120), np.uint8)
+    cdl_values[10:60, 10:60] = 1  # cultivated CDL block
+    nlcd_values = np.zeros((120, 120), np.uint8)
+    nlcd_values[10:60, 10:60] = 82  # cultivated Annual NLCD block
+    cdl = tmp_path / "cdl.tif"
+    nlcd = tmp_path / "nlcd.tif"
+    profile = {
+        "driver": "GTiff",
+        "width": 120,
+        "height": 120,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:5070",
+        "transform": from_origin(-1_200_000, 1_900_000, 30, 30),
+    }
+    with rasterio.open(cdl, "w", **profile) as output:
+        output.write(cdl_values, 1)
+    with rasterio.open(nlcd, "w", **profile) as output:
+        output.write(nlcd_values, 1)
 
     generator = np.random.default_rng(11)
-    positive, negative = _discovery_field_points(path, half_extent_m=300.0, generator=generator)
-    assert positive, "cultivated cores must yield positive candidates"
-    assert negative, "clear footprints must yield negative candidates"
+    positive, negative = _discovery_field_points(
+        cdl, nlcd, half_extent_m=300.0, generator=generator
+    )
+    assert positive, "cultivated CDL cores must yield positive candidates"
+    assert negative, "clear two-source footprints must yield negative candidates"
 
-    with rasterio.open(path) as dataset:
+    with rasterio.open(cdl) as dataset:
         for east, north in positive[:50]:
             row, column = dataset.index(east, north)
-            assert values[row, column] == 82
+            assert cdl_values[row, column] == 1
         radius = math.ceil(300.0 / 30)
         for east, north in negative[:50]:
             row, column = dataset.index(east, north)
-            window = values[row - radius : row + radius + 1, column - radius : column + radius + 1]
-            assert not (window == 82).any(), "a negative footprint must be entirely clear"
+            window = cdl_values[
+                row - radius : row + radius + 1,
+                column - radius : column + radius + 1,
+            ]
+            assert not (window > 0).any(), "a negative footprint must be CDL-clear"
+            nlcd_window = nlcd_values[
+                row - radius : row + radius + 1, column - radius : column + radius + 1
+            ]
+            assert not (nlcd_window == 82).any(), "a negative footprint must be NLCD-clear"
 
     # Discovery is seeded, so the same generator state reproduces the same set.
     repeat_positive, repeat_negative = _discovery_field_points(
-        path, half_extent_m=300.0, generator=np.random.default_rng(11)
+        cdl, nlcd, half_extent_m=300.0, generator=np.random.default_rng(11)
     )
     assert repeat_positive == positive
     assert repeat_negative == negative
@@ -598,9 +612,36 @@ def test_field_discovery_separates_cultivated_cores_from_clear_footprints(tmp_pa
     ) as output:
         output.write(np.zeros((8, 8), np.uint8), 1)
     none_positive, _ = _discovery_field_points(
-        empty, half_extent_m=3000.0, generator=np.random.default_rng(3)
+        empty, empty, half_extent_m=3000.0, generator=np.random.default_rng(3)
     )
     assert none_positive == []
+
+
+def test_materialize_cdl_window_crops_an_official_source(tmp_path) -> None:
+    source = tmp_path / "national.tif"
+    values = np.arange(100, dtype=np.uint8).reshape(10, 10)
+    transform = from_origin(-112.0, 37.0, 0.1, 0.1)
+    with rasterio.open(
+        source,
+        "w",
+        driver="GTiff",
+        width=10,
+        height=10,
+        count=1,
+        dtype="uint8",
+        crs="EPSG:4326",
+        transform=transform,
+    ) as output:
+        output.write(values, 1)
+
+    cropped = _materialize_cdl_window(
+        source,
+        (-111.8, 36.2, -111.2, 36.8),
+        tmp_path / "regional.tif",
+    )
+    with rasterio.open(cropped) as dataset:
+        assert dataset.shape == (6, 6)
+        assert np.array_equal(dataset.read(1), values[2:8, 2:8])
 
 
 def test_grid_extent_covers_the_requested_half_extent() -> None:

@@ -36,6 +36,7 @@ from rasterio.warp import (  # type: ignore[import-untyped]
 )
 from rasterio.windows import Window  # type: ignore[import-untyped]
 from rasterio.windows import bounds as window_bounds
+from rasterio.windows import from_bounds as window_from_bounds
 from shapely import box  # type: ignore[import-untyped]
 from shapely.geometry import Polygon, shape  # type: ignore[import-untyped]
 from shapely.geometry.base import BaseGeometry  # type: ignore[import-untyped]
@@ -459,6 +460,45 @@ def _fetch_cdl(
     return destination
 
 
+def _materialize_cdl_window(
+    source_path: str | Path,
+    bounds_wgs84: tuple[float, float, float, float],
+    destination: Path,
+) -> Path:
+    """Cache one regional CDL window for deterministic candidate screening."""
+
+    if destination.is_file():
+        return destination
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.partial")
+    with rasterio.open(source_path) as source:
+        if source.crs is None:
+            raise DataValidationError(f"CDL source has no CRS: {source_path}")
+        bounds = transform_bounds("EPSG:4326", source.crs, *bounds_wgs84, densify_pts=21)
+        window = window_from_bounds(*bounds, transform=source.transform)
+        window = window.round_offsets().round_lengths().intersection(
+            Window(0, 0, source.width, source.height)
+        )
+        if window.width <= 0 or window.height <= 0:
+            raise DataValidationError(f"CDL does not intersect discovery bounds: {bounds_wgs84}")
+        profile = source.profile.copy()
+        profile.update(
+            {
+                "driver": "GTiff",
+                "width": int(window.width),
+                "height": int(window.height),
+                "transform": source.window_transform(window),
+                "compress": "deflate",
+            }
+        )
+        profile.pop("blockxsize", None)
+        profile.pop("blockysize", None)
+        with rasterio.open(temporary, "w", **profile) as output:
+            output.write(source.read(window=window))
+    os.replace(temporary, destination)
+    return destination
+
+
 def _cached_cdl_archive(year: int) -> Path | None:
     """Return the configured official CDL archive if it is locally available."""
 
@@ -474,23 +514,47 @@ def _to_projected_geometry(geometry: dict[str, Any], crs: str) -> BaseGeometry:
 
 
 def _discovery_field_points(
-    path: Path,
+    primary_path: Path,
+    secondary_path: Path,
     *,
     half_extent_m: float,
     generator: np.random.Generator,
 ) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
-    with rasterio.open(path) as dataset:
-        values = dataset.read(1)
-        cultivated = values == 82
+    """Find fields from CDL and negatives clear in both recorded authorities."""
+
+    with rasterio.open(secondary_path) as secondary_dataset:
+        values = secondary_dataset.read(1)
+        primary_values = np.zeros(values.shape, dtype=np.uint8)
+        with rasterio.open(primary_path) as primary_dataset:
+            if primary_dataset.crs is None or secondary_dataset.crs is None:
+                raise DataValidationError("Field discovery rasters must declare their CRS")
+            reproject(
+                source=rasterio.band(primary_dataset, 1),
+                destination=primary_values,
+                src_transform=primary_dataset.transform,
+                src_crs=primary_dataset.crs,
+                src_nodata=primary_dataset.nodata,
+                dst_transform=secondary_dataset.transform,
+                dst_crs=secondary_dataset.crs,
+                dst_nodata=0,
+                resampling=Resampling.nearest,
+            )
+        primary_cultivated = np.isin(primary_values, list(CULTIVATED_CDL_CODES))
+        secondary_cultivated = values == 82
+        cultivated = np.logical_or(primary_cultivated, secondary_cultivated)
         positive_core = cv2.erode(
-            cultivated.astype(np.uint8),
+            primary_cultivated.astype(np.uint8),
             np.ones((5, 5), np.uint8),
         ).astype(bool)
-        radius = math.ceil(half_extent_m / max(abs(dataset.transform.a), 1))
+        radius = math.ceil(half_extent_m / max(abs(secondary_dataset.transform.a), 1))
         # Integral-image square sums make full-footprint negative screening O(n).
         integral = cv2.integral(cultivated.astype(np.uint8), sdepth=cv2.CV_64F)
-        rows = np.arange(radius, max(radius, dataset.height - radius), dtype=int)
-        columns = np.arange(radius, max(radius, dataset.width - radius), dtype=int)
+        rows = np.arange(
+            radius, max(radius, secondary_dataset.height - radius), dtype=int
+        )
+        columns = np.arange(
+            radius, max(radius, secondary_dataset.width - radius), dtype=int
+        )
         negative: list[tuple[float, float]] = []
         if len(rows) and len(columns):
             candidates = np.column_stack(
@@ -504,7 +568,7 @@ def _discovery_field_points(
                 x0, x1 = column - radius, column + radius + 1
                 total = integral[y1, x1] - integral[y0, x1] - integral[y1, x0] + integral[y0, x0]
                 if total == 0:
-                    east, north = xy(dataset.transform, int(row), int(column))
+                    east, north = xy(secondary_dataset.transform, int(row), int(column))
                     negative.append((float(east), float(north)))
         positive_indices = np.column_stack(np.where(positive_core))
         if len(positive_indices) > 15000:
@@ -512,7 +576,7 @@ def _discovery_field_points(
                 generator.choice(len(positive_indices), size=15000, replace=False)
             ]
         positive = [
-            cast(tuple[float, float], xy(dataset.transform, int(row), int(column)))
+            cast(tuple[float, float], xy(secondary_dataset.transform, int(row), int(column)))
             for row, column in positive_indices
         ]
         return positive, negative
@@ -687,21 +751,32 @@ def discover_candidates(
                 config.discovery_landcover_year,
                 cache_dir / f"{region.id}__nlcd-{config.discovery_landcover_year}.tif",
             )
+            cdl_source = _fetch_cdl(
+                active,
+                bounds,
+                config.discovery_landcover_year,
+                cache_dir / f"{region.id}__cdl-{config.discovery_landcover_year}.tif",
+            )
+            cdl = _materialize_cdl_window(
+                cdl_source,
+                bounds,
+                cache_dir / f"{region.id}__cdl-{config.discovery_landcover_year}.tif",
+            )
             field_positive_projected, field_negative_projected = _discovery_field_points(
+                cdl,
                 landcover,
-                # The maximum oblique camera footprint extends 1.182x the
-                # nominal half extent in its long direction. Field negatives
-                # must be clear across that full envelope, not only a nadir
-                # square, or G2 will correctly reject them later.
-                half_extent_m=config.negative_screen_half_extent_m * 1.182,
+                # Gates evaluate the complete stored source grid, including a
+                # 30 m safety buffer.  Clear both authorities across exactly
+                # that support rather than screening only the camera trapezoid.
+                half_extent_m=config.source_half_extent_m + 30,
                 generator=generator,
             )
             field_positive: list[tuple[float, float, list[str], str]] = [
-                (longitude, latitude, [], "annual-nlcd")
+                (longitude, latitude, [], "cdl+annual-nlcd")
                 for longitude, latitude in _convert_points(field_positive_projected, "EPSG:5070")
             ]
             field_negative: list[tuple[float, float, list[str], str]] = [
-                (longitude, latitude, [], "annual-nlcd")
+                (longitude, latitude, [], "cdl+annual-nlcd")
                 for longitude, latitude in _convert_points(field_negative_projected, "EPSG:5070")
             ]
             for feature, positive, negative in (
