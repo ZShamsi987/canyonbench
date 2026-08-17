@@ -420,10 +420,12 @@ def _fetch_cdl(
     bounds_wgs84: tuple[float, float, float, float],
     year: int,
     destination: Path,
+    *,
+    use_cached_archive: bool = True,
 ) -> str | Path:
     if destination.is_file():
         return destination
-    archive = _cached_cdl_archive(year)
+    archive = _cached_cdl_archive(year) if use_cached_archive else None
     if archive is not None:
         try:
             with zipfile.ZipFile(archive) as bundle:
@@ -577,6 +579,52 @@ def _discovery_field_points(
             ]
         positive = [
             cast(tuple[float, float], xy(secondary_dataset.transform, int(row), int(column)))
+            for row, column in positive_indices
+        ]
+        return positive, negative
+
+
+def _discovery_nlcd_field_points(
+    path: Path,
+    *,
+    half_extent_m: float,
+    generator: np.random.Generator,
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    """Build a broad Annual NLCD field pool for later CDL pre-screening."""
+
+    with rasterio.open(path) as dataset:
+        values = dataset.read(1)
+        cultivated = values == 82
+        positive_core = cv2.erode(
+            cultivated.astype(np.uint8),
+            np.ones((5, 5), np.uint8),
+        ).astype(bool)
+        radius = math.ceil(half_extent_m / max(abs(dataset.transform.a), 1))
+        integral = cv2.integral(cultivated.astype(np.uint8), sdepth=cv2.CV_64F)
+        rows = np.arange(radius, max(radius, dataset.height - radius), dtype=int)
+        columns = np.arange(radius, max(radius, dataset.width - radius), dtype=int)
+        negative: list[tuple[float, float]] = []
+        if len(rows) and len(columns):
+            candidates = np.column_stack(
+                (
+                    generator.choice(rows, size=min(15000, len(rows) * len(columns))),
+                    generator.choice(columns, size=min(15000, len(rows) * len(columns))),
+                )
+            )
+            for row, column in candidates:
+                y0, y1 = row - radius, row + radius + 1
+                x0, x1 = column - radius, column + radius + 1
+                total = integral[y1, x1] - integral[y0, x1] - integral[y1, x0] + integral[y0, x0]
+                if total == 0:
+                    east, north = xy(dataset.transform, int(row), int(column))
+                    negative.append((float(east), float(north)))
+        positive_indices = np.column_stack(np.where(positive_core))
+        if len(positive_indices) > 15000:
+            positive_indices = positive_indices[
+                generator.choice(len(positive_indices), size=15000, replace=False)
+            ]
+        positive = [
+            cast(tuple[float, float], xy(dataset.transform, int(row), int(column)))
             for row, column in positive_indices
         ]
         return positive, negative
@@ -751,32 +799,20 @@ def discover_candidates(
                 config.discovery_landcover_year,
                 cache_dir / f"{region.id}__nlcd-{config.discovery_landcover_year}.tif",
             )
-            cdl_source = _fetch_cdl(
-                active,
-                bounds,
-                config.discovery_landcover_year,
-                cache_dir / f"{region.id}__cdl-{config.discovery_landcover_year}.tif",
-            )
-            cdl = _materialize_cdl_window(
-                cdl_source,
-                bounds,
-                cache_dir / f"{region.id}__cdl-{config.discovery_landcover_year}.tif",
-            )
-            field_positive_projected, field_negative_projected = _discovery_field_points(
-                cdl,
+            field_positive_projected, field_negative_projected = _discovery_nlcd_field_points(
                 landcover,
-                # Gates evaluate the complete stored source grid, including a
-                # 30 m safety buffer.  Clear both authorities across exactly
-                # that support rather than screening only the camera trapezoid.
-                half_extent_m=config.source_half_extent_m + 30,
+                # This wide Annual NLCD screen forms the candidate pool. Field
+                # negatives are subsequently checked against CDL and NLCD on
+                # their exact stored source support before acquisition.
+                half_extent_m=config.negative_screen_half_extent_m * 1.182,
                 generator=generator,
             )
             field_positive: list[tuple[float, float, list[str], str]] = [
-                (longitude, latitude, [], "cdl+annual-nlcd")
+                (longitude, latitude, [], "annual-nlcd")
                 for longitude, latitude in _convert_points(field_positive_projected, "EPSG:5070")
             ]
             field_negative: list[tuple[float, float, list[str], str]] = [
-                (longitude, latitude, [], "cdl+annual-nlcd")
+                (longitude, latitude, [], "annual-nlcd")
                 for longitude, latitude in _convert_points(field_negative_projected, "EPSG:5070")
             ]
             for feature, positive, negative in (
