@@ -57,6 +57,11 @@ NAIP_STAC_SEARCH = "https://planetarycomputer.microsoft.com/api/stac/v1/search"
 PLANETARY_COMPUTER_SIGN = "https://planetarycomputer.microsoft.com/api/sas/v1/sign"
 NAIP_COLLECTION = "naip"
 NAIP_EXPORT_CHUNK_PX = 1000
+# The ImageServer's lightweight ID query can itself keep a TLS response alive
+# without making progress.  It is only an optimization for locking a tile, so
+# give it a much shorter budget than the image export that follows.
+NAIP_RASTER_ID_QUERY_TIMEOUT_SECONDS = 8
+NAIP_RASTER_ID_QUERY_WALL_CLOCK_SECONDS = 10
 NAIP_TERMS = (
     "https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map"
 )
@@ -1116,6 +1121,8 @@ def _naip_export_raster_ids(
             "returnGeometry": "false",
         },
         attempts=1,
+        timeout=httpx.Timeout(NAIP_RASTER_ID_QUERY_TIMEOUT_SECONDS, connect=5),
+        wall_clock_limit=NAIP_RASTER_ID_QUERY_WALL_CLOCK_SECONDS,
     ).json()
     values = response.get("objectIds")
     if not isinstance(values, list):

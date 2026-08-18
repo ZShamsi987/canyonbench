@@ -12,6 +12,7 @@ import yaml
 from rasterio.transform import from_origin  # type: ignore[import-untyped]
 from rasterio.windows import Window  # type: ignore[import-untyped]
 
+import canyonbench.trace.acquisition as acquisition
 from canyonbench.exceptions import DataValidationError
 from canyonbench.trace.acquisition import (
     _feature_id,
@@ -95,6 +96,22 @@ def test_naip_export_query_locks_only_integer_raster_ids() -> None:
     assert ids == [3, 19]
     assert captured["where"] == "Year = 2023 AND Category = 1"
     assert captured["geometryType"] == "esriGeometryEnvelope"
+
+
+def test_naip_raster_id_query_has_an_absolute_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        time.sleep(0.05)
+        return httpx.Response(200, json={"objectIds": [19]})
+
+    monkeypatch.setattr(acquisition, "NAIP_RASTER_ID_QUERY_WALL_CLOCK_SECONDS", 0.01)
+    grid = _Grid(-111.0, 36.7, resolution_m=2.0, half_extent_m=20.0)
+    with (
+        httpx.Client(transport=httpx.MockTransport(handler)) as client,
+        pytest.raises(DataValidationError, match="wall-clock limit"),
+    ):
+        _naip_export_raster_ids(client, grid, 2023)
 
 
 def test_naip_export_requests_locked_tiff_directly() -> None:
