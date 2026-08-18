@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import numpy as np
 import rasterio  # type: ignore[import-untyped]
+from rasterio.warp import transform_bounds  # type: ignore[import-untyped]
+from rasterio.windows import Window, from_bounds  # type: ignore[import-untyped]
 
 from canyonbench.io import write_json
 from canyonbench.trace.acquisition import (
@@ -23,9 +26,25 @@ from canyonbench.trace.config import load_candidate_seeds, load_source_acquisiti
 from canyonbench.trace.schemas import CandidateSeed
 
 
-def _contains(path: Path, values: set[int]) -> bool:
+def _contains(
+    path: str | Path,
+    values: set[int],
+    *,
+    bounds_wgs84: tuple[float, float, float, float] | None = None,
+) -> bool:
+    """Check a small geographic window without reading a national CDL archive."""
+
     with rasterio.open(path) as dataset:
-        return bool(np.isin(dataset.read(1), list(values)).any())
+        window: Window | None = None
+        if bounds_wgs84 is not None:
+            if dataset.crs is None:
+                raise RuntimeError(f"Raster has no CRS: {path}")
+            bounds = transform_bounds("EPSG:4326", dataset.crs, *bounds_wgs84, densify_pts=21)
+            window = from_bounds(*bounds, transform=dataset.transform)
+            window = window.round_offsets().round_lengths().intersection(
+                Window(0, 0, dataset.width, dataset.height)
+            )
+        return bool(np.isin(dataset.read(1, window=window), list(values)).any())
 
 
 def _screen(
@@ -54,10 +73,8 @@ def _screen(
             grid.wgs84_bounds,
             year,
             directory / f"cdl_{year}.tif",
-            use_cached_archive=False,
+            use_cached_archive=bool(os.environ.get("CANYONBENCH_CDL_CACHE_DIR")),
         )
-        if not isinstance(cdl, Path):
-            raise RuntimeError(f"Expected a regional CDL file, received {cdl}")
         nlcd = _fetch_nlcd(
             client,
             "Land-Cover-Native",
@@ -65,7 +82,11 @@ def _screen(
             year,
             directory / f"annual_nlcd_landcover_{year}.tif",
         )
-    clear = not _contains(cdl, set(CULTIVATED_CDL_CODES)) and not _contains(nlcd, {82})
+    clear = not _contains(
+        cdl,
+        set(CULTIVATED_CDL_CODES),
+        bounds_wgs84=grid.wgs84_bounds,
+    ) and not _contains(nlcd, {82})
     return clear, year
 
 
