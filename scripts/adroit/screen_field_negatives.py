@@ -99,6 +99,7 @@ def main() -> None:
     parser.add_argument("--cache-dir", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--group", choices=("flight_corridor", "regional_ood", "cross_biome"))
+    parser.add_argument("--start", type=int, default=0)
     parser.add_argument("--limit", type=int, default=None)
     arguments = parser.parse_args()
 
@@ -113,6 +114,9 @@ def main() -> None:
             arguments.source_root / seed.candidate_id.replace("candidate", "site") / "COMPLETE"
         ).is_file()
     ]
+    if arguments.start < 0:
+        parser.error("--start must be non-negative")
+    candidates = candidates[arguments.start :]
     if arguments.limit is not None:
         candidates = candidates[: arguments.limit]
 
