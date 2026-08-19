@@ -973,6 +973,7 @@ def _materialize_naip_cogs(
         CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif,.tiff",
         GDAL_HTTP_MULTIRANGE="YES",
         GDAL_HTTP_MERGE_CONSECUTIVE_RANGES="YES",
+        GDAL_CACHEMAX=128,
         # GDAL's default COG requests can wait indefinitely after a connection
         # has been established.  The official ImageServer is attempted first;
         # this mirror is the bounded fallback, not a reason to strand an
@@ -1002,7 +1003,8 @@ def _materialize_naip_cogs(
                     dst_nodata=0,
                     resampling=Resampling.bilinear,
                     init_dest_nodata=first,
-                    num_threads=2,
+                    num_threads=1,
+                    warp_mem_limit=64,
                 )
             first = False
     with rasterio.open(temporary) as dataset:
@@ -1143,6 +1145,15 @@ def _materialize_naip(
 ) -> None:
     """Materialize one NAIP mosaic, using bounded official exports in production."""
 
+    if os.getenv("CANYONBENCH_NAIP_COG_FALLBACK"):
+        owns_client = client is None
+        active = client or _http_client()
+        try:
+            _materialize_naip_cogs(items, grid, destination, client=active)
+        finally:
+            if owns_client:
+                active.close()
+        return
     if year is None:
         owns_client = client is None
         active = client or _http_client()
