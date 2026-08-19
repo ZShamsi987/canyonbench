@@ -1021,6 +1021,8 @@ def _naip_export_chunk(
     grid: _Grid,
     year: int,
     window: Window,
+    *,
+    raster_ids: Sequence[int] | None = None,
 ) -> tuple[Window, bytes]:
     label = (
         f"{int(window.col_off)},{int(window.row_off)} "
@@ -1032,12 +1034,13 @@ def _naip_export_chunk(
     bottom = top - window.height * grid.resolution_m
     # Keep each locked ImageServer operation independently bounded rather than
     # allowing one delayed tile to stall this complete source grid.
-    try:
-        _naip_trace(f"{label}: querying locked raster IDs")
-        raster_ids = _naip_export_raster_ids(client, grid, year, window=window)
-    except DataValidationError:
-        raster_ids = []
-    _naip_trace(f"{label}: locked raster IDs={raster_ids}")
+    if raster_ids is None:
+        try:
+            _naip_trace(f"{label}: querying locked raster IDs")
+            raster_ids = _naip_export_raster_ids(client, grid, year, window=window)
+        except DataValidationError:
+            raster_ids = []
+    _naip_trace(f"{label}: locked raster IDs={list(raster_ids)}")
     mosaic_rule: dict[str, Any]
     if raster_ids:
         # Locking the exact rasters that intersect this site bypasses the
@@ -1173,6 +1176,17 @@ def _materialize_naip(
     owns_client = client is None
     active = client or _http_client()
     try:
+        try:
+            # A single full-footprint lookup usually returns a small fixed set
+            # of NAIP rasters.  Reusing it for every output chunk avoids 169
+            # independent ImageServer queries and prevents their occasional
+            # timeout from degrading an otherwise locked request into the
+            # unstable global year mosaic.
+            locked_raster_ids = _naip_export_raster_ids(active, grid, year)
+        except DataValidationError:
+            locked_raster_ids = []
+        fixed_raster_ids = locked_raster_ids or None
+        _naip_trace(f"full footprint locked raster IDs={locked_raster_ids}")
         with rasterio.open(temporary, "w", **profile) as output:
             for offset in range(0, len(windows), 4):
                 batch = windows[offset : offset + 4]
@@ -1185,7 +1199,14 @@ def _materialize_naip(
                 # source grid and output are unchanged, and acquisition is
                 # deliberately a single niced login-node workload.
                 chunks = [
-                    _naip_export_chunk(active, grid, year, window) for window in batch
+                    _naip_export_chunk(
+                        active,
+                        grid,
+                        year,
+                        window,
+                        raster_ids=fixed_raster_ids,
+                    )
+                    for window in batch
                 ]
                 for window, payload in chunks:
                     _naip_trace(

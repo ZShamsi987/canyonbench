@@ -136,6 +136,30 @@ def test_naip_export_requests_locked_tiff_directly() -> None:
     assert export.headers["connection"] == "close"
 
 
+def test_naip_export_uses_prelocked_raster_ids_without_another_query() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/exportImage"):
+            return httpx.Response(200, content=b"II*\\x00mock-tiff")
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    grid = _Grid(-111.0, 36.7, resolution_m=2.0, half_extent_m=20.0)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        _, payload = _naip_export_chunk(
+            client,
+            grid,
+            2023,
+            Window(0, 0, 20, 20),
+            raster_ids=[19, 3],
+        )
+
+    assert payload.startswith(b"II")
+    assert len(requests) == 1
+    assert json.loads(requests[0].url.params["mosaicRule"])["lockRasterIds"] == [19, 3]
+
+
 def test_retry_get_enforces_wall_clock_limit() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         time.sleep(0.05)
