@@ -47,7 +47,7 @@ REPORTS="$CANYONBENCH_DATA/reports"
 LOGS="$CANYONBENCH_DATA/logs"
 CACHE="$CANYONBENCH_DATA/cache"
 CANDIDATES="$MANIFESTS/trace_candidates.yaml"
-EXPANDED="$MANIFESTS/trace_candidates_expanded.yaml"
+EXPANDED="${EXPANDED:-$MANIFESTS/trace_candidates_expanded.yaml}"
 SHORTLIST="$MANIFESTS/field_negative_shortlist.yaml"
 VETTED="$MANIFESTS/field_negative_flight_vetted.yaml"
 mkdir -p "$MANIFESTS" "$REPORTS" "$LOGS" "$CACHE/site-discovery"
@@ -65,7 +65,7 @@ else
     --multiplier "$MULTIPLIER"
 fi
 
-echo "== 2/4 pre-filtering field negatives against CDL Cultivated Layer COGs =="
+echo "== 2/4 pre-filtering field negatives against CDL class-raster COGs =="
 # Cheap, resumable, and never authoritative: the state file means a rerun costs
 # no requests, and the shortlist only decides who is worth an authoritative check.
 run scripts/adroit/prefilter_field_negatives.py \
