@@ -113,3 +113,35 @@ regions:
     north: 41.50
     weight: 1
     description: Cold Great Basin desert cross-biome negative-control stratum.
+
+  # FEASIBILITY-DRIVEN PREREGISTRATION CLARIFICATION, frozen 2026-08-20, and
+  # disclosed in the paper alongside the Group A water-negative decision.
+  #
+  # The registered field-negative rule admits a site only when no cultivated
+  # pixel falls inside the buffered maximum camera footprint.  Measured against
+  # the CDL class raster over that footprint, the five original cross-biome
+  # regions yield ONE admissible field-negative centre in 1,765 candidates
+  # against a quota of eight.  Forest and montane regions cannot supply them
+  # either (Northern Rockies 0/1440, Appalachian 0/1200, Adirondack 0/676):
+  # CDL scatters hay and pasture codes through rangeland and even designated
+  # wilderness, and one pixel disqualifies 408 km2.  In practice the rule is
+  # satisfiable only on bare ground.
+  #
+  # This region is the cross-biome stratum that can actually supply the quota:
+  # 217 of 2,469 screened centres are clear, 14 of them mutually separated by
+  # the registered 22 km.  It is a genuine biome shift from the Colorado
+  # Plateau corridor -- cold, internally drained salt playa in the Central
+  # Basin and Range -- and it does not overlap mojave_dryland, which is already
+  # a regional_ood stratum, or nevada_great_basin.  Its NAIP coverage is 2021,
+  # which pairs with CDL 2021 for an exact G1 date alignment.
+  #
+  # Consequence to report: field negatives are confined to barren terrain in
+  # every group, so barrenness is confounded with the field-negative label.
+  - id: utah_west_desert
+    group: cross_biome
+    west: -114.05
+    south: 38.70
+    east: -112.30
+    north: 41.50
+    weight: 1
+    description: Cold salt-desert playa cross-biome stratum spanning the Bonneville, Great Salt Lake, and Sevier deserts.
