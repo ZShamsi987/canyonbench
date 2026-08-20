@@ -53,7 +53,19 @@ def _screen(
     cache_dir: Path,
     config: object,
 ) -> tuple[bool, int]:
-    """Return whether both field authorities are clear over the source support."""
+    """Return whether both field authorities are clear over the screened footprint.
+
+    Two extents are deliberately different here.  Rasters are fetched over the
+    full source package so the cached CDL and Annual NLCD windows are byte-identical
+    to the ones acquisition will reuse, and so NAIP year selection matches the year
+    acquisition will require.  The cultivated-absence test, however, is applied only
+    over the buffered maximum registered camera footprint, because that is the exact
+    support on which G2 decides a negative site: ``evaluate_site`` zeroes every mask
+    outside ``_maximum_camera_footprint`` before ``negative_clear`` is computed.
+    Screening the wider 25 km package instead rejected candidates on cultivated
+    pixels the camera can never see -- 628 km2 of evidence for a 408 km2 decision --
+    and made this pre-screen stricter than the gate it exists to predict.
+    """
 
     # Type annotations on the generated Pydantic schema deliberately remain
     # local to the acquisition library.  The script only needs these frozen
@@ -63,6 +75,14 @@ def _screen(
         seed.latitude,
         config.working_resolution_m,  # type: ignore[attr-defined]
         config.source_half_extent_m + 30,  # type: ignore[attr-defined]
+    )
+    # The 30 m margin is the registered G2 negative safety buffer, which the gate
+    # applies by dilating both masks before testing them.
+    screen_grid = _Grid(
+        seed.longitude,
+        seed.latitude,
+        config.working_resolution_m,  # type: ignore[attr-defined]
+        config.negative_screen_half_extent_m + 30,  # type: ignore[attr-defined]
     )
     directory = cache_dir / seed.candidate_id
     directory.mkdir(parents=True, exist_ok=True)
@@ -85,8 +105,8 @@ def _screen(
     clear = not _contains(
         cdl,
         set(CULTIVATED_CDL_CODES),
-        bounds_wgs84=grid.wgs84_bounds,
-    ) and not _contains(nlcd, {82})
+        bounds_wgs84=screen_grid.wgs84_bounds,
+    ) and not _contains(nlcd, {82}, bounds_wgs84=screen_grid.wgs84_bounds)
     return clear, year
 
 
