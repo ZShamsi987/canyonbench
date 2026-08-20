@@ -36,6 +36,11 @@ SOURCES_CONFIG="${SOURCES_CONFIG:-$CANYONBENCH_HOME/configs/trace_sources.yaml}"
 MULTIPLIER="${MULTIPLIER:-20}"
 WORKERS="${WORKERS:-3}"
 PREFILTER_WORKERS="${PREFILTER_WORKERS:-8}"
+# Field-negative quotas are 20 flight, 12 regional, 8 cross-biome. The
+# authoritative screen costs about 22 s per candidate, so shortlisting far past
+# the quota only buys screen time; three times the largest quota leaves margin
+# for authoritative rejections and for seeds the 22 km rule cannot place.
+MAX_PER_GROUP="${MAX_PER_GROUP:-60}"
 
 MANIFESTS="$CANYONBENCH_DATA/manifests"
 REPORTS="$CANYONBENCH_DATA/reports"
@@ -67,7 +72,8 @@ run scripts/adroit/prefilter_field_negatives.py \
   "$SOURCES_CONFIG" "$EXPANDED" "$SHORTLIST" \
   "$REPORTS/field-negative-prefilter.json" \
   --state "$CACHE/field-negative-prefilter.json" \
-  --workers "$PREFILTER_WORKERS"
+  --workers "$PREFILTER_WORKERS" \
+  --max-per-group "$MAX_PER_GROUP"
 
 echo "== 3/4 authoritative CDL + Annual NLCD screen of the shortlist =="
 # Restarting every eight candidates clears GIS process state, which is what the

@@ -163,6 +163,16 @@ def main() -> None:
         type=int,
         help="Stop after this many candidates; the state file resumes the rest.",
     )
+    parser.add_argument(
+        "--max-per-group",
+        type=int,
+        help=(
+            "Cap the shortlist at this many seeds per group. The authoritative screen "
+            "costs about 22 s per candidate, so shortlisting far beyond the quota buys "
+            "nothing; a few times the quota leaves margin for authoritative rejections "
+            "and for sites the 22 km separation rule cannot place."
+        ),
+    )
     arguments = parser.parse_args()
     if arguments.workers < 1:
         parser.error("--workers must be positive")
@@ -210,9 +220,23 @@ def main() -> None:
         for seed in seeds
         if seed.candidate_id in done and done[seed.candidate_id]["cultivated_px"] == 0
     ]
-    write_candidate_manifest(arguments.output, shortlisted)
+    capped: list[CandidateSeed] = []
+    if arguments.max_per_group:
+        kept: dict[str, int] = {}
+        for seed in shortlisted:
+            if kept.get(seed.group, 0) < arguments.max_per_group:
+                kept[seed.group] = kept.get(seed.group, 0) + 1
+                capped.append(seed)
+        print(
+            f"capping shortlist at {arguments.max_per_group} per group: "
+            f"{len(shortlisted)} -> {len(capped)}",
+            flush=True,
+        )
+    else:
+        capped = shortlisted
+    write_candidate_manifest(arguments.output, capped)
     by_group: dict[str, int] = {}
-    for seed in shortlisted:
+    for seed in capped:
         by_group[seed.group] = by_group.get(seed.group, 0) + 1
     checked = len(done)
     write_json(
@@ -225,14 +249,16 @@ def main() -> None:
             "candidates": len(seeds),
             "checked": checked,
             "shortlisted": len(shortlisted),
+            "written": len(capped),
+            "max_per_group": arguments.max_per_group,
             "shortlisted_by_group": by_group,
             "shortlist_rate": round(len(shortlisted) / checked, 4) if checked else 0.0,
             "failures": failures,
         },
     )
     print(
-        f"shortlisted {len(shortlisted)}/{checked} -> {arguments.output} "
-        f"({len(failures)} failures)",
+        f"shortlisted {len(shortlisted)}/{checked}, wrote {len(capped)} -> "
+        f"{arguments.output} ({len(failures)} failures)",
         flush=True,
     )
     print("Confirm every shortlisted seed with screen_field_negatives.py before acquisition.")
