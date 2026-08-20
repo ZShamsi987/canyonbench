@@ -9,13 +9,14 @@ authoritative screen cannot do that search: it costs one CropScape request or on
 national-archive window per candidate, it has repeatedly been throttled to a 503,
 and reading whole archives is what the login node kills for memory.
 
-This stage answers the same question against the USDA CDL Cultivated Layer served
-as cloud-optimised GeoTIFFs by Microsoft Planetary Computer.  Each check is a
+This stage answers the same question against the USDA CDL class raster served as
+cloud-optimised GeoTIFFs by Microsoft Planetary Computer, applying the frozen
+CULTIVATED_CDL_CODES so the test is the registered rule itself.  Each check is a
 windowed range read of one footprint: no archive, no bulk download, a few hundred
 kilobytes and about a second, and safe to run several at a time.  A pool of
 thousands is therefore screenable in under an hour instead of a day.
 
-WHAT THIS IS NOT.  The Cultivated Layer published there ends at 2021, so it can
+WHAT THIS IS NOT.  The collection published there ends at 2021, so it can
 disagree with the CDL year that G1 will require for a 2022 or 2023 NAIP site.
 This stage is consequently a *pre-filter*, never an authority: it only decides
 which candidates are worth an authoritative check.  Every candidate it accepts
@@ -44,6 +45,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import numpy as np
 import rasterio  # type: ignore[import-untyped]
 from rasterio.warp import transform_bounds  # type: ignore[import-untyped]
 from rasterio.windows import Window, from_bounds  # type: ignore[import-untyped]
@@ -51,6 +53,7 @@ from rasterio.windows import Window, from_bounds  # type: ignore[import-untyped]
 from canyonbench.exceptions import DataValidationError
 from canyonbench.io import read_json, write_json
 from canyonbench.trace.acquisition import (
+    CULTIVATED_CDL_CODES,
     NAIP_STAC_SEARCH,
     _Grid,
     _http_client,
@@ -61,12 +64,16 @@ from canyonbench.trace.config import load_candidate_seeds, load_source_acquisiti
 from canyonbench.trace.schemas import CandidateSeed
 
 CULTIVATED_COLLECTION = "usda-cdl"
-CULTIVATED_ASSET = "cultivated"
-# The Cultivated Layer is a two-value raster: 1 non-cultivated, 2 cultivated.
-CULTIVATED_VALUE = 2
-# The most recent year Planetary Computer publishes for this layer.  A newer
-# year is preferred automatically if the collection is ever extended.
+# The ``cropland`` asset is the CDL class raster itself, so this stage applies
+# the frozen CULTIVATED_CDL_CODES -- the registered rule exactly, differing from
+# the authoritative screen only in year.  The derived ``cultivated`` layer was
+# measurably stricter (4 of 40 clear against 5 of 40 on the frozen pool) because
+# it marks anything cultivated across a multi-year history.
+CULTIVATED_ASSET = "cropland"
+# The most recent year Planetary Computer publishes for this collection.  A
+# newer year is preferred automatically if the collection is ever extended.
 PREFILTER_YEAR = 2021
+CULTIVATED_CODES = np.array(sorted(CULTIVATED_CDL_CODES))
 
 
 def _cultivated_href(client: httpx.Client, longitude: float, latitude: float, year: int) -> str:
@@ -91,11 +98,11 @@ def _cultivated_href(client: httpx.Client, longitude: float, latitude: float, ye
 
 
 def _cultivated_pixels(path: str, bounds_wgs84: tuple[float, float, float, float]) -> int:
-    """Count cultivated pixels inside one footprint without reading the tile."""
+    """Count cultivated pixels inside one footprint without reading the whole tile."""
 
     with rasterio.open(path) as dataset:
         if dataset.crs is None:
-            raise DataValidationError(f"Cultivated Layer tile has no CRS: {path}")
+            raise DataValidationError(f"CDL tile has no CRS: {path}")
         bounds = transform_bounds("EPSG:4326", dataset.crs, *bounds_wgs84, densify_pts=21)
         window = from_bounds(*bounds, transform=dataset.transform)
         window = (
@@ -104,8 +111,8 @@ def _cultivated_pixels(path: str, bounds_wgs84: tuple[float, float, float, float
             .intersection(Window(0, 0, dataset.width, dataset.height))
         )
         if window.width <= 0 or window.height <= 0:
-            raise DataValidationError(f"Cultivated Layer does not cover {bounds_wgs84}")
-        return int((dataset.read(1, window=window) == CULTIVATED_VALUE).sum())
+            raise DataValidationError(f"CDL does not cover {bounds_wgs84}")
+        return int(np.isin(dataset.read(1, window=window), CULTIVATED_CODES).sum())
 
 
 def _check(seed: CandidateSeed, *, config: Any, year: int) -> dict[str, Any]:
