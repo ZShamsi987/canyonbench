@@ -120,6 +120,15 @@ def main() -> None:
     parser.add_argument("output", type=Path)
     parser.add_argument("report", type=Path)
     parser.add_argument("--state", type=Path)
+    parser.add_argument(
+        "--source-root",
+        type=Path,
+        help=(
+            "Skip candidates whose source bundle is already COMPLETE. Re-acquiring a "
+            "site cannot change its gate outcome, and the frozen candidate ids sort "
+            "first, so without this the shortlist fills with sites already on disk."
+        ),
+    )
     parser.add_argument("--group", choices=("flight_corridor", "regional_ood", "cross_biome"))
     parser.add_argument("--minimum-area-km2", type=float, default=DEFAULT_MINIMUM_AREA_KM2)
     parser.add_argument("--max-per-group", type=int)
@@ -134,6 +143,12 @@ def main() -> None:
         if seed.target_class == "water"
         and seed.case_type == "positive"
         and (arguments.group is None or seed.group == arguments.group)
+        and not (
+            arguments.source_root is not None
+            and (
+                arguments.source_root / seed.candidate_id.replace("candidate", "site") / "COMPLETE"
+            ).is_file()
+        )
     ]
 
     done: dict[str, dict[str, Any]] = {}
