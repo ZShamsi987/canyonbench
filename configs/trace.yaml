@@ -17,7 +17,15 @@ dataset:
   minimum_site_separation_m: 22000.0
   degraded_view_count: 240
   quotas:
-    - {group: flight_corridor, per_class: 20}
+    # FEASIBILITY-DRIVEN PREREGISTRATION CLARIFICATION, frozen 2026-08-23, and
+    # disclosed in the composition table alongside the Group A water-negative
+    # decision. TIGER returns zero primary roads and twelve secondary segments
+    # across the whole flight corridor - six named US highways. Under the
+    # registered 22 km separation that supports ten road-positive candidates, of
+    # which seven pass G1-G4, so an eleventh site does not exist to acquire. The
+    # class total stays at 20 and the dataset stays at 120 sites; only the
+    # positive/negative split of this one stratum departs from balance.
+    - {group: flight_corridor, per_class: 20, positive_overrides: {road: 7}}
     - {group: regional_ood, per_class: 12}
     - {group: cross_biome, per_class: 8}
   split_fractions:
