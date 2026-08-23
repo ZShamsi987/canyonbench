@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -21,6 +22,21 @@ from canyonbench.trace.splits import (
     independence_issues,
     validate_quota,
 )
+
+
+def _gate_workers() -> int:
+    """Threads for gate evaluation, sized to the allocation rather than fixed at four.
+
+    Each evaluation opens independent read-only rasters and spends nearly all of
+    its time inside GDAL and OpenCV with the GIL released, so this scales with
+    the cores Slurm actually granted. Collection order is keyed by site id and
+    re-sorted afterwards, so the selected cohort is identical at any width.
+    """
+
+    allocated = os.environ.get("SLURM_CPUS_PER_TASK") or os.environ.get("CANYONBENCH_GATE_WORKERS")
+    if allocated and allocated.isdigit() and int(allocated) > 0:
+        return min(32, int(allocated))
+    return min(8, os.cpu_count() or 4)
 
 
 def _bucket(site: SiteSpec) -> str:
@@ -133,7 +149,7 @@ def select_sites(
     # Each evaluation opens independent, read-only rasters and spends most of
     # its time in GDAL/OpenCV. Bounded concurrency cuts cohort freeze time
     # without changing the deterministic candidate or MILP ordering.
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=_gate_workers()) as executor:
         evaluations = {
             candidate.site_id: executor.submit(evaluate_site, candidate, config)
             for candidate in ordered

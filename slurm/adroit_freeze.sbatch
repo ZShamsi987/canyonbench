@@ -2,8 +2,9 @@
 #SBATCH --job-name=cb-freeze
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-# Gate evaluation reads independent source rasters in four bounded workers.
-#SBATCH --cpus-per-task=4
+# Gate evaluation reads independent source rasters; the worker count follows
+# SLURM_CPUS_PER_TASK, and the cohort is identical at any width.
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
 #SBATCH --time=02:00:00
 #SBATCH --nice=5000
