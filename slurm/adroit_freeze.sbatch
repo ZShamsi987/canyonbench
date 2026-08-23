@@ -5,7 +5,11 @@
 # Gate evaluation reads independent source rasters; the worker count follows
 # SLURM_CPUS_PER_TASK, and the cohort is identical at any width.
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+# Each gate evaluation holds a full-resolution site in memory: a 12530x12530
+# three-band image, six binary masks, and three float32 detector layers, roughly
+# 4 GB. That is why memory scales with cpus-per-task here - 16 workers against
+# the old 64 GB request was OOM-killed at 67 GB.
+#SBATCH --mem=300G
 #SBATCH --time=02:00:00
 #SBATCH --nice=5000
 #SBATCH --output=logs/%x-%j.out

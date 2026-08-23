@@ -66,7 +66,9 @@ say "$(find "$CANYONBENCH_DATA/sources" -mindepth 2 -maxdepth 2 -name COMPLETE |
 
 say "stage 1/3 freeze"
 if ! wait_for_job "$(sbatch --parsable slurm/adroit_freeze.sbatch)" cb-freeze; then
-  say "FREEZE FAILED - the shortage list is in the job's stderr. Stopping."
+  say "FREEZE FAILED. Stopping. Read logs/cb-freeze-*.err: a DataValidationError"
+  say "names the short strata, while OUT_OF_MEMORY or TIMEOUT means the job needed"
+  say "a larger allocation and says nothing about the cohort."
   exit 1
 fi
 if [ ! -s "$SITES" ]; then
