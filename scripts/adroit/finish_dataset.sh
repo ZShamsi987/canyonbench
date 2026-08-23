@@ -85,12 +85,37 @@ if [ -f "$VALIDATION" ]; then
 fi
 
 say "stage 3/3 instruments and audit packet"
-FIRST_VIEW="$(find "$DATASET_DIR" -name rgb.png | sort | head -1)"
-if [ -z "$FIRST_VIEW" ]; then
-  say "no rendered views found under $DATASET_DIR; cannot run instruments."
+# V1 inserts a synthetic feature into an otherwise NEGATIVE scene: inserting a
+# road into a view that already contains one measures nothing. Pick the view
+# from a frozen negative site rather than whichever rgb.png sorts first.
+NEGATIVE_VIEW="$("$CANYONBENCH_HOME/.venv/bin/python" - "$SITES" "$DATASET_DIR" <<'PYEOF'
+import sys
+from pathlib import Path
+
+import yaml
+
+sites_path, dataset_dir = Path(sys.argv[1]), Path(sys.argv[2])
+document = yaml.safe_load(sites_path.read_text()) or {}
+sites = document.get("sites") or document.get("candidates") or []
+for site in sites:
+    if site.get("case_type") != "negative":
+        continue
+    directory = dataset_dir / site["site_id"]
+    # Prefer the lowest altitude, where an inserted feature is most resolvable.
+    for view in sorted(directory.glob("view_a*nadir")) or sorted(directory.glob("view_*")):
+        candidate = view / "rgb.png"
+        if candidate.is_file():
+            print(candidate)
+            raise SystemExit(0)
+raise SystemExit("no negative-site view found")
+PYEOF
+)"
+if [ -z "$NEGATIVE_VIEW" ]; then
+  say "no negative-site rendered view found under $DATASET_DIR; cannot run V1."
   exit 1
 fi
-if ! wait_for_job "$(sbatch --parsable slurm/adroit_instruments.sbatch "$FIRST_VIEW")" cb-instruments; then
+say "V1 negative control view: $NEGATIVE_VIEW"
+if ! wait_for_job "$(sbatch --parsable slurm/adroit_instruments.sbatch "$NEGATIVE_VIEW")" cb-instruments; then
   say "INSTRUMENTS FAILED. Stopping."
   exit 1
 fi
