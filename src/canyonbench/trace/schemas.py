@@ -282,6 +282,30 @@ class GateConfig(StrictModel):
 class SiteQuota(StrictModel):
     group: GeographicGroup
     per_class: Annotated[int, Field(gt=0)]
+    # Positive-site count for a named class, where an even split is not
+    # achievable. The flight corridor contains six named US highways in total,
+    # so under the registered 22 km separation it supports ten road-positive
+    # sites of which seven pass the gates; requiring ten forces an infeasible
+    # cohort. Any entry here is a disclosed departure from the balanced design
+    # and must be reported in the composition table.
+    positive_overrides: dict[FeatureClass, Annotated[int, Field(ge=0)]] = Field(
+        default_factory=dict
+    )
+
+    def positives(self, feature: FeatureClass) -> int:
+        return self.positive_overrides.get(feature, self.per_class // 2)
+
+    def negatives(self, feature: FeatureClass) -> int:
+        return self.per_class - self.positives(feature)
+
+    @model_validator(mode="after")
+    def overrides_fit_the_class_total(self) -> SiteQuota:
+        for feature, count in self.positive_overrides.items():
+            if count > self.per_class:
+                raise ValueError(
+                    f"positive_overrides[{feature}]={count} exceeds per_class={self.per_class}"
+                )
+        return self
 
 
 class DatasetConfig(StrictModel):

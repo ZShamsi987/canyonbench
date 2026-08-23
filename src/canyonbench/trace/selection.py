@@ -39,16 +39,18 @@ def _split_requirements(
     config: DatasetConfig,
 ) -> dict[tuple[str, str, str, str], int]:
     requirements: dict[tuple[str, str, str, str], int] = {}
-    per_group = {row.group: row.per_class // 2 for row in config.quotas}
-    for group, total in per_group.items():
-        development = round(total * config.split_fractions["development"])
-        validation = round(total * config.split_fractions["validation"])
-        test = total - development - validation
+    for row in config.quotas:
         for feature in ("water", "road", "field"):
             for presence in ("positive", "negative"):
-                requirements[(group, feature, presence, "development")] = development
-                requirements[(group, feature, presence, "validation")] = validation
-                requirements[(group, feature, presence, "test")] = test
+                total = (
+                    row.positives(feature) if presence == "positive" else row.negatives(feature)
+                )
+                development = round(total * config.split_fractions["development"])
+                validation = round(total * config.split_fractions["validation"])
+                test = total - development - validation
+                requirements[(row.group, feature, presence, "development")] = development
+                requirements[(row.group, feature, presence, "validation")] = validation
+                requirements[(row.group, feature, presence, "test")] = test
     return requirements
 
 
@@ -145,10 +147,11 @@ def select_sites(
     strata: dict[tuple[str, str, str], list[SiteSpec]] = defaultdict(list)
     for site in passed:
         strata[(site.group, site.target_class, _bucket(site))].append(site)
-    quota = {row.group: row.per_class // 2 for row in config.quotas}
     required = {
-        (group, feature, presence): count
-        for group, count in quota.items()
+        (row.group, feature, presence): (
+            row.positives(feature) if presence == "positive" else row.negatives(feature)
+        )
+        for row in config.quotas
         for feature in ("water", "road", "field")
         for presence in ("positive", "negative")
     }

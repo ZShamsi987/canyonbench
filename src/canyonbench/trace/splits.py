@@ -63,13 +63,18 @@ def validate_quota(sites: list[SiteSpec], config: DatasetConfig) -> None:
                     f"Expected {per_class} {group}/{feature} sites; "
                     f"found {counts[(group, feature)]}"
                 )
+    rows = {row.group: row for row in config.quotas}
     for key in counts:
         relevant = [site for site in sites if (site.group, site.target_class) == key]
         positives = sum(site.case_type in {"positive", "extinction"} for site in relevant)
         negatives = sum(site.case_type == "negative" for site in relevant)
-        if positives != negatives:
+        row = rows[key[0]]
+        expected_positive = row.positives(key[1])
+        expected_negative = row.negatives(key[1])
+        if (positives, negatives) != (expected_positive, expected_negative):
             raise DataValidationError(
-                f"{key[0]}/{key[1]} is not balanced: {positives} positive vs {negatives} negative"
+                f"{key[0]}/{key[1]} composition is {positives} positive vs {negatives} "
+                f"negative; expected {expected_positive} vs {expected_negative}"
             )
 
 
