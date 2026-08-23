@@ -13,6 +13,12 @@ CANYONBENCH_DATA="${CANYONBENCH_DATA:-/scratch/network/$USER/canyonbench-trace-d
 SOURCES_CONFIG="${SOURCES_CONFIG:-$CANYONBENCH_HOME/configs/trace_sources.yaml}"
 VETTED_CANDIDATES="${VETTED_CANDIDATES:-$CANYONBENCH_DATA/manifests/field_negative_flight_vetted.yaml}"
 WORKERS="${WORKERS:-3}"
+# CropScape has been answering 503 and TLS handshake timeouts for days, so
+# acquisition must window the local national CDL archives instead. Default it
+# here rather than only in the recovery chain: a direct call to this script
+# without it fails every candidate on a dead public service, which is exactly
+# what happened to 139 acquisitions overnight.
+export CANYONBENCH_CDL_CACHE_DIR="${CANYONBENCH_CDL_CACHE_DIR:-$CANYONBENCH_DATA/cache/cdl}"
 ACQUIRE_TIMEOUT_SECONDS="${ACQUIRE_TIMEOUT_SECONDS:-3600}"
 RUN_LABEL="${RUN_LABEL:-$(date -u +%Y%m%dT%H%M%SZ)}"
 
