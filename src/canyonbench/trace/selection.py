@@ -123,7 +123,11 @@ def _solve_assignment(
         integrality=np.ones(variable_count),
         bounds=Bounds(np.zeros(variable_count), np.ones(variable_count)),
         constraints=LinearConstraint(matrix.tocsr(), lower, upper),
-        options={"presolve": True, "time_limit": 300},
+        # Pinning a stratum to its exact supply leaves the solver no slack, and
+        # conflicts are global rather than per-stratum, so the feasible region
+        # can be both narrow and large to search. Five minutes was tuned on a
+        # smaller cohort.
+        options={"presolve": True, "time_limit": 1200},
     )
     if not result.success or result.x is None:
         return None

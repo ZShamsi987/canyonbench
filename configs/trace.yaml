@@ -25,7 +25,13 @@ dataset:
     # which seven pass G1-G4, so an eleventh site does not exist to acquire. The
     # class total stays at 20 and the dataset stays at 120 sites; only the
     # positive/negative split of this one stratum departs from balance.
-    - {group: flight_corridor, per_class: 20, positive_overrides: {road: 7}}
+    #
+    # Six rather than seven: conflicting sites must share a split, and the
+    # seven passing candidates form conflict components of 4, 2 and 1. A
+    # dev/val/test of 1/1/5 can seat the 4 only in test, leaving nowhere for
+    # the 2, so seven is infeasible by construction. Six splits 1/1/4 and
+    # seats the 4 in test with room for the rest.
+    - {group: flight_corridor, per_class: 20, positive_overrides: {road: 6}}
     - {group: regional_ood, per_class: 12}
     # FEASIBILITY-DRIVEN PREREGISTRATION CLARIFICATION, frozen 2026-08-24.
     # Cross-biome water positives fail G3 on local contrast, not on size or
