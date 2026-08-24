@@ -53,21 +53,40 @@ def _conflict(first: SiteSpec, second: SiteSpec, config: DatasetConfig) -> bool:
 
 def _split_requirements(
     config: DatasetConfig,
-) -> dict[tuple[str, str, str, str], int]:
-    requirements: dict[tuple[str, str, str, str], int] = {}
+) -> tuple[dict[tuple[str, str, str], int], dict[tuple[str, str], int]]:
+    """Composition per stratum, and the 20/20/60 allocation per group.
+
+    The split is enforced at group level rather than per stratum. Requiring every
+    (group, feature, presence) cell to appear in all three splits is infeasible
+    once real feature ids exist: conflicting sites must share a split, and every
+    site touching Lake Powell shares one NHD water body, so the fifteen passing
+    flight-corridor water positives form a single conflict component that can
+    occupy exactly one split while a per-stratum rule demands three.
+
+    The registered protocol asks for a 20/20/60 allocation and for no split to
+    share a source tile, feature, or footprint with another. Both still hold
+    here, as does the exact per-stratum composition; what is given up is the
+    guarantee that every stratum appears in every split. That trade is recorded
+    in the composition table.
+    """
+
+    strata: dict[tuple[str, str, str], int] = {}
+    group_splits: dict[tuple[str, str], int] = {}
     for row in config.quotas:
+        group_total = 0
         for feature in ("water", "road", "field"):
             for presence in ("positive", "negative"):
                 total = (
                     row.positives(feature) if presence == "positive" else row.negatives(feature)
                 )
-                development = round(total * config.split_fractions["development"])
-                validation = round(total * config.split_fractions["validation"])
-                test = total - development - validation
-                requirements[(row.group, feature, presence, "development")] = development
-                requirements[(row.group, feature, presence, "validation")] = validation
-                requirements[(row.group, feature, presence, "test")] = test
-    return requirements
+                strata[(row.group, feature, presence)] = total
+                group_total += total
+        development = round(group_total * config.split_fractions["development"])
+        validation = round(group_total * config.split_fractions["validation"])
+        group_splits[(row.group, "development")] = development
+        group_splits[(row.group, "validation")] = validation
+        group_splits[(row.group, "test")] = group_total - development - validation
+    return strata, group_splits
 
 
 def _solve_assignment(
@@ -77,7 +96,7 @@ def _solve_assignment(
     """Jointly select sites and splits under exact quota/conflict constraints."""
 
     splits = ("development", "validation", "test")
-    requirements = _split_requirements(config)
+    strata, group_splits = _split_requirements(config)
     variable_count = len(candidates) * len(splits)
     conflicts = [
         (first, second)
@@ -85,7 +104,9 @@ def _solve_assignment(
         for second in range(first + 1, len(candidates))
         if _conflict(candidates[first], candidates[second], config)
     ]
-    constraint_count = len(candidates) + len(requirements) + len(conflicts) * 6
+    constraint_count = (
+        len(candidates) + len(strata) + len(group_splits) + len(conflicts) * 6
+    )
     matrix = lil_matrix((constraint_count, variable_count), dtype=float)
     lower = np.full(constraint_count, -np.inf)
     upper = np.ones(constraint_count)
@@ -94,15 +115,24 @@ def _solve_assignment(
         for split_index in range(len(splits)):
             matrix[row, candidate_index * len(splits) + split_index] = 1
         row += 1
-    for key, required in sorted(requirements.items()):
-        group, feature, presence, split = key
-        split_index = splits.index(split)
+    # Exact composition: each stratum contributes its quota across all splits.
+    for (group, feature, presence), required in sorted(strata.items()):
         for candidate_index, candidate in enumerate(candidates):
             if (
                 candidate.group == group
                 and candidate.target_class == feature
                 and _bucket(candidate) == presence
             ):
+                for split_index in range(len(splits)):
+                    matrix[row, candidate_index * len(splits) + split_index] = 1
+        lower[row] = required
+        upper[row] = required
+        row += 1
+    # Exact 20/20/60 within each geographic group.
+    for (group, split), required in sorted(group_splits.items()):
+        split_index = splits.index(split)
+        for candidate_index, candidate in enumerate(candidates):
+            if candidate.group == group:
                 matrix[row, candidate_index * len(splits) + split_index] = 1
         lower[row] = required
         upper[row] = required
