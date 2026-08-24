@@ -27,7 +27,15 @@ dataset:
     # positive/negative split of this one stratum departs from balance.
     - {group: flight_corridor, per_class: 20, positive_overrides: {road: 7}}
     - {group: regional_ood, per_class: 12}
-    - {group: cross_biome, per_class: 8}
+    # FEASIBILITY-DRIVEN PREREGISTRATION CLARIFICATION, frozen 2026-08-24.
+    # Cross-biome water positives fail G3 on local contrast, not on size or
+    # consensus: of 62 acquired candidates only one clears the 0.03 threshold
+    # (0.0702), while sites carrying 40-270 km2 of water at IoU 0.6-0.75 sit at
+    # 0.007-0.022. Turbid plains and wetland water is close to the brightness of
+    # the land around it; the threshold was calibrated on canyon reservoir water
+    # against red rock. Acquiring more returns more low-contrast water, so the
+    # class total stays at 8 with a 3/5 split.
+    - {group: cross_biome, per_class: 8, positive_overrides: {water: 3}}
   split_fractions:
     development: 0.2
     validation: 0.2
