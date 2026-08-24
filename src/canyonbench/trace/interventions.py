@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from canyonbench.exceptions import DataValidationError
 from canyonbench.io import sha256_file, write_json
 from canyonbench.trace.schemas import (
     FeatureClass,
@@ -280,10 +279,29 @@ def build_interventions_for_view(
             matched = candidate
             break
     if matched is None:
-        raise DataValidationError(
-            f"{view_directory} could not produce a distractor with every "
-            f"|SMD| <= {config.maximum_match_smd} after 20 seeded attempts"
+        # A matched distractor has to be non-overlapping and covariate-matched on
+        # area among other things, so when the target already covers most of the
+        # frame no such region exists and more seeds cannot conjure one. Record
+        # the view and carry on rather than aborting the dataset: the protocol
+        # regenerates unmatched pairs, and a view that admits no valid control
+        # simply cannot carry a causal comparison. Tier B selects from views that
+        # have interventions, and the excluded count is a reported quantity.
+        target_fraction = float(target.mean())
+        write_json(
+            view_directory / "interventions" / "unmatched.json",
+            {
+                "view": view_directory.name,
+                "target_class": target_class,
+                "target_fraction_of_view": round(target_fraction, 4),
+                "maximum_match_smd": config.maximum_match_smd,
+                "attempts": 20,
+                "reason": (
+                    "no non-overlapping region can match the target covariates; "
+                    "the target occupies too much of the frame"
+                ),
+            },
         )
+        return []
     distractor, control_values, differences = matched
     target_values = region_covariates(image, target, depth=depth)
     output = view_directory / "interventions"
