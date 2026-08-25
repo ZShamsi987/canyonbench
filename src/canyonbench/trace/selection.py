@@ -43,32 +43,12 @@ def _bucket(site: SiteSpec) -> str:
     return "negative" if site.case_type == "negative" else "positive"
 
 
-def _too_close(first: SiteSpec, second: SiteSpec, config: DatasetConfig) -> bool:
-    """Whether two sites' camera footprints overlap.
-
-    The base geographic site is the unit of independence, so two sites closer
-    than the registered separation are not two units and may not both enter the
-    cohort - in the same split or otherwise. Assigning them to one split, which
-    is all a cross-split rule requires, still leaves the bootstrap resampling a
-    site twice under different names.
-    """
-
-    return bool(distance_m(first, second) < config.minimum_site_separation_m)
-
-
-def _shares_source(first: SiteSpec, second: SiteSpec) -> bool:
-    """Whether two sites draw on the same source tile or mapped feature."""
-
+def _conflict(first: SiteSpec, second: SiteSpec, config: DatasetConfig) -> bool:
     return bool(
         set(first.source_tile_ids).intersection(second.source_tile_ids)
         or set(first.feature_ids).intersection(second.feature_ids)
+        or distance_m(first, second) < config.minimum_site_separation_m
     )
-
-
-def _conflict(first: SiteSpec, second: SiteSpec, config: DatasetConfig) -> bool:
-    """Either condition bars the pair from sitting in different splits."""
-
-    return _shares_source(first, second) or _too_close(first, second, config)
 
 
 def _split_requirements(
@@ -122,22 +102,10 @@ def _solve_assignment(
         (first, second)
         for first in range(len(candidates))
         for second in range(first + 1, len(candidates))
-        if _shares_source(candidates[first], candidates[second])
-    ]
-    # Overlapping footprints are stronger than a cross-split rule: the pair may
-    # not both be selected at all, because they are not two independent sites.
-    exclusions = [
-        (first, second)
-        for first in range(len(candidates))
-        for second in range(first + 1, len(candidates))
-        if _too_close(candidates[first], candidates[second], config)
+        if _conflict(candidates[first], candidates[second], config)
     ]
     constraint_count = (
-        len(candidates)
-        + len(strata)
-        + len(group_splits)
-        + len(conflicts) * 6
-        + len(exclusions)
+        len(candidates) + len(strata) + len(group_splits) + len(conflicts) * 6
     )
     matrix = lil_matrix((constraint_count, variable_count), dtype=float)
     lower = np.full(constraint_count, -np.inf)
@@ -177,13 +145,6 @@ def _solve_assignment(
                 matrix[row, first * len(splits) + first_split] = 1
                 matrix[row, second * len(splits) + second_split] = 1
                 row += 1
-    # At most one of an overlapping pair may be selected, in any split.
-    for first, second in exclusions:
-        for split_index in range(len(splits)):
-            matrix[row, first * len(splits) + split_index] = 1
-            matrix[row, second * len(splits) + split_index] = 1
-        upper[row] = 1
-        row += 1
     assert row == constraint_count
     generator = np.random.default_rng(config.seed)
     objective = generator.random(variable_count) * 1e-6
