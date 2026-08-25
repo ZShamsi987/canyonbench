@@ -144,6 +144,7 @@ def _audit_rows(cases: dict[tuple[str, str], bool]) -> list[AuditRecord]:
                 AuditRecord(
                     site=site,
                     view=view,
+                    target_class="road",
                     auditor=auditor,
                     overlay_aligned=True,
                     feature_resolvable=resolvable,
@@ -479,6 +480,7 @@ def test_audit_csv_round_trip_supports_the_band_validation(tmp_path) -> None:
     fields = [
         "site",
         "view",
+        "target_class",
         "auditor",
         "overlay_aligned",
         "feature_resolvable",
@@ -494,6 +496,7 @@ def test_audit_csv_round_trip_supports_the_band_validation(tmp_path) -> None:
                 {
                     "site": "site_0001",
                     "view": "view_d24km_nadir",
+                    "target_class": "road",
                     "auditor": auditor,
                     "overlay_aligned": "yes",
                     "feature_resolvable": "no",

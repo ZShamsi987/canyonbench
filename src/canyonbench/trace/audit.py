@@ -17,6 +17,7 @@ from canyonbench.trace.schemas import AuditRecord
 AUDIT_FIELDS = [
     "site",
     "view",
+    "target_class",
     "auditor",
     "overlay_aligned",
     "feature_resolvable",
@@ -61,7 +62,7 @@ def _audit_sheet(
 
     panels: list[tuple[str, Image.Image]] = [
         ("clean RGB", clean),
-        ("target overlay", _panel(overlay_path, size=panel_size)),
+        (f"target overlay: {row['target_class']}", _panel(overlay_path, size=panel_size)),
     ]
     intervention_path = view_dir / "interventions" / "manifest.json"
     if intervention_path.exists():
@@ -143,6 +144,7 @@ def create_audit_sample(
         {
             "site": row["site_id"],
             "view": row["view_id"],
+            "target_class": row["target_class"],
             "auditor": auditor,
             "overlay_aligned": "",
             "feature_resolvable": "",

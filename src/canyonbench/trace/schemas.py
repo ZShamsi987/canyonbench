@@ -735,6 +735,10 @@ class TraceRunConfig(StrictModel):
 class AuditRecord(StrictModel):
     site: str = Field(pattern=r"^site_\d{4,}$")
     view: str = Field(pattern=r"^view_[a-z0-9_]+$")
+    # Which feature the auditor is judging. Without it "can you see the feature"
+    # has no referent: a negative site shows no overlay to infer from, and at
+    # 16 km looking for a road is a different task from looking for a river.
+    target_class: FeatureClass
     auditor: str = Field(min_length=1, max_length=32)
     overlay_aligned: bool
     feature_resolvable: bool

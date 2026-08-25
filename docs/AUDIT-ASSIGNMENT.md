@@ -106,6 +106,12 @@ are comfortable with it — the file is small and the columns are simple.
 4. Put the browser and the spreadsheet side by side. You will alternate between
    them about 400 times, so the setup is worth 30 seconds.
 
+**The `target_class` column tells you what to look for** — `water`, `road`, or
+`field`. Read it before you open the sheet. Every question is about that one
+feature: at 16 km, hunting for a road is a completely different task from
+hunting for a river, and on a negative site there is no overlay to infer it
+from. The class is also printed above the overlay panel on the sheet itself.
+
 The columns you fill are `overlay_aligned`, `feature_resolvable`,
 `obvious_edit_artifact`, `source_mismatch`. Type `yes` or `no`, lowercase.
 `y`, `n`, `1`, `0`, `true`, `false` also load. **A blank cell is rejected** and
@@ -122,7 +128,7 @@ expected.
 
 | | Left column | Right column |
 |---|---|---|
-| **Row 1** | `clean RGB` | `target overlay` |
+| **Row 1** | `clean RGB` | `target overlay: <class>` |
 | **Row 2** | `blur: target` | `blur: distractor` |
 | **Row 3** | `texture: target` | `texture: distractor` |
 | **Row 4** | `frequency: target` | `frequency: distractor` |
@@ -154,8 +160,9 @@ experiment, not a bug.
 
 For each of your 96 rows:
 
-1. Read `site` and `view` from the row. The sheet is
-   `audit_assets/<site>__<view>.png`.
+1. Read `site`, `view` and **`target_class`** from the row. The sheet is
+   `audit_assets/<site>__<view>.png`, and `target_class` is the feature every
+   question refers to.
 2. Open it in the browser. **Click once** to get to 100%.
 3. Look at **`target overlay`** (top right). Answer `overlay_aligned`.
 4. Look at **`clean RGB`** (top left), with the overlay out of your mind.
