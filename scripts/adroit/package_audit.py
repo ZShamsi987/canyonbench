@@ -46,7 +46,7 @@ def main() -> None:
     arguments = parser.parse_args()
 
     csv_path = arguments.audit_csv
-    assets = csv_path.parent / f"{csv_path.stem}_assets"
+    assets = csv_path.parent / f"{csv_path.stem}_assets"  # audit.csv -> audit_assets
     if not csv_path.is_file():
         raise SystemExit(f"no audit CSV at {csv_path}")
     if not assets.is_dir():

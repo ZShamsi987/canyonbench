@@ -87,7 +87,7 @@ are comfortable with it — the file is small and the columns are simple.
 
    ```
    audit.csv
-   audit.csv_assets/
+   audit_assets/
      site_0041__view_c16km_oblique.png
      site_0057__view_a3km_nadir.png
      ...
@@ -147,7 +147,7 @@ experiment, not a bug.
 For each of your 96 rows:
 
 1. Read `site` and `view` from the row. The sheet is
-   `audit.csv_assets/<site>__<view>.png`.
+   `audit_assets/<site>__<view>.png`.
 2. Open it in the browser. **Click once** to get to 100%.
 3. Look at **`target overlay`** (top right). Answer `overlay_aligned`.
 4. Look at **`clean RGB`** (top left), with the overlay out of your mind.
