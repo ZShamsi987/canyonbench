@@ -106,7 +106,9 @@ def main() -> None:
     print(f"sheets present  : {checked}   missing: {missing}   unreadable: {unreadable}")
 
     strata = Counter(site.rsplit('_', 1)[0] for site, _ in views)
-    altitudes = Counter(view.split('_')[1][:1] for _, view in views if '_' in view)
+    # view_a3km_nadir -> "a3km"; every altitude shares the "a" prefix, so the
+    # whole token is the discriminator, not its first character.
+    altitudes = Counter(view.split("_")[1] for _, view in views if "_" in view)
     print(f"altitude spread : {dict(sorted(altitudes.items()))}")
     if len(altitudes) < 4:
         problems.append(f"sample covers only {len(altitudes)} of the four altitudes")

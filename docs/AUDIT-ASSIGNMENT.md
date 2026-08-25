@@ -136,7 +136,7 @@ expected.
 
 Some sheets have fewer than eight panels. That is normal and not a defect.
 
-The filename tells you the altitude: `a3km`, `b8km`, `c16km`, `d24km`. Expect
+The filename tells you the altitude: `a3km`, `a8km`, `a16km`, `a24km`. Expect
 features to be obvious at 3 km and often invisible at 24 km — that is the
 experiment, not a bug.
 
