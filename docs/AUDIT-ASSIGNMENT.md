@@ -134,7 +134,15 @@ expected.
   feature) and once to a **distractor** (an unrelated region of similar size).
   All six are at 100% suppression.
 
-Some sheets have fewer than eight panels. That is normal and not a defect.
+**Most sheets have only the top two panels**, and that is expected, not a defect.
+A negative site has no feature to mask, so there is nothing to edit; and a
+positive whose feature fills most of the frame leaves no room for a matched
+distractor region, so it gets no edited panels either. Only a minority of views
+carry the full eight.
+
+**When a sheet has no edit panels, answer `obvious_edit_artifact` = `no`.** There
+is no edit to look at, so there is no artifact to report. Do not leave it blank -
+a blank cell is rejected.
 
 The filename tells you the altitude: `a3km`, `a8km`, `a16km`, `a24km`. Expect
 features to be obvious at 3 km and often invisible at 24 km — that is the
@@ -152,7 +160,8 @@ For each of your 96 rows:
 3. Look at **`target overlay`** (top right). Answer `overlay_aligned`.
 4. Look at **`clean RGB`** (top left), with the overlay out of your mind.
    Answer `feature_resolvable`.
-5. Scroll to rows 2–4. Answer `obvious_edit_artifact`.
+5. Scroll to rows 2–4 if they exist. Answer `obvious_edit_artifact` -
+   `no` when the sheet has no edit panels at all.
 6. Answer `source_mismatch` from what you have already seen.
 7. Type the four answers. Move to the next row.
 

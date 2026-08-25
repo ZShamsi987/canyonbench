@@ -94,7 +94,14 @@ def _audit_sheet(
     width, panel_height = panel_size
     label_height = 36
     row_height = panel_height + label_height
-    sheet = Image.new("RGB", (width * 2, row_height * 4), "white")
+    # Size the sheet to the panels that exist. Negatives carry no target mask and
+    # so never have interventions, and a positive whose target admits no matched
+    # distractor has none either, so most sheets hold two panels. A fixed
+    # four-row canvas left three quarters of those sheets blank, which an auditor
+    # has to scroll through before concluding nothing is missing.
+    panel_count = min(len(panels), 8)
+    sheet_rows = max(1, (panel_count + 1) // 2)
+    sheet = Image.new("RGB", (width * 2, row_height * sheet_rows), "white")
     draw = ImageDraw.Draw(sheet)
     for index, (label, panel) in enumerate(panels[:8]):
         x = (index % 2) * width
