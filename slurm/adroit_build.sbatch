@@ -4,7 +4,11 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
-#SBATCH --time=08:00:00
+# Measured at roughly 3.4 minutes per site on 16 cores, so 120 sites is about
+# seven hours - too close to an eight hour ceiling. The build is not resumable:
+# every view is written unconditionally, so hitting the wall at site 115 loses
+# the whole run. The partition allows seven days; take the headroom.
+#SBATCH --time=20:00:00
 #SBATCH --nice=5000
 #SBATCH --output=logs/%x-%j.out
 #SBATCH --error=logs/%x-%j.err
