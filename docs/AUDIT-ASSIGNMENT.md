@@ -107,7 +107,19 @@ are comfortable with it — the file is small and the columns are simple.
    them about 400 times, so the setup is worth 30 seconds.
 
 **The `target_class` column tells you what to look for** — `water`, `road`, or
-`field`. Read it before you open the sheet. Every question is about that one
+`field`. Read it before you open the sheet.
+
+Each class is narrower than the everyday word:
+
+| Class | What is marked | What is deliberately **not** |
+|---|---|---|
+| `road` | **Major roads only** — interstates, US highways, state routes | Local streets, farm tracks, dirt roads, driveways |
+| `water` | Mapped surface water — lakes, reservoirs, rivers | Playas, washes and marsh, which are dry ground |
+| `field` | Actively cultivated cropland | Pasture, bare rock, scrub, farmyards, treelines |
+
+So a sheet where one highway is red and three dirt tracks are not is **correct**,
+not a registration error. You are judging whether the red sits where a feature
+*of that class* is, never whether every road-like thing in the frame is marked. Every question is about that one
 feature: at 16 km, hunting for a road is a completely different task from
 hunting for a river, and on a negative site there is no overlay to infer it
 from. The class is also printed above the overlay panel on the sheet itself.
