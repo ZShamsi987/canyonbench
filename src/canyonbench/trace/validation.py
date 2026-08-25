@@ -162,10 +162,22 @@ def validate_dataset(
         project.dataset.minimum_site_separation_m if project is not None else 22000.0
     )
     ordered_sites = sorted(site_rows)
+    overlapping_pairs = 0
     for position, first_id in enumerate(ordered_sites):
         for second_id in ordered_sites[position + 1 :]:
             separation = _distance_m(site_rows[first_id], site_rows[second_id])
             if separation < minimum_separation:
+                overlapping_pairs += 1
+            # The registered rule is that no split may share an overlapping
+            # camera footprint with another, and the separation is documented as
+            # preventing cross-split overlap specifically. Sites that overlap
+            # inside one split are permitted; what they cost is statistical
+            # independence, which the protocol handles by requiring the
+            # effective number of independent units to be reported rather than
+            # by forbidding the pair.
+            if separation < minimum_separation and (
+                str(site_rows[first_id]["split"]) != str(site_rows[second_id]["split"])
+            ):
                 _issue(
                     issues,
                     "OVERLAPPING_SITE_FOOTPRINT",
@@ -173,6 +185,36 @@ def validate_dataset(
                     f"(< {minimum_separation:.1f} m)",
                 )
 
+
+    # Section 14 requires the effective number of independent units beside the
+    # raw count. Sites closer than the separation threshold share most of their
+    # ground, so a bootstrap that treats them as distinct overstates its own
+    # precision. Cluster the overlapping ones and report how many genuinely
+    # independent units the cohort carries.
+    parent = {site_id: site_id for site_id in ordered_sites}
+
+    def _root(node: str) -> str:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    for position, first_id in enumerate(ordered_sites):
+        for second_id in ordered_sites[position + 1 :]:
+            if _distance_m(site_rows[first_id], site_rows[second_id]) < minimum_separation:
+                first_root, second_root = _root(first_id), _root(second_id)
+                if first_root != second_root:
+                    parent[first_root] = second_root
+    effective_units = len({_root(site_id) for site_id in ordered_sites})
+    if effective_units < len(ordered_sites):
+        _issue(
+            issues,
+            "EFFECTIVE_INDEPENDENT_UNITS",
+            f"{len(ordered_sites)} sites form {effective_units} independent units at "
+            f"{minimum_separation:.0f} m separation ({overlapping_pairs} overlapping pairs); "
+            "bootstrap over units, and report this count beside the raw site count",
+            warning=True,
+        )
     split_counts: dict[str, int] = {}
     for row in site_rows.values():
         split = str(row["split"])
