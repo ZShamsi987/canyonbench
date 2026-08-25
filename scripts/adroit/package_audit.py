@@ -92,10 +92,18 @@ def main() -> None:
 
             with Image.open(sheet) as image:
                 width, height = image.size
-            # Two columns of 1024 px panels, each with a 36 px label strip.
-            if width < 2000 or height < 2000:
+            # Two columns of 1024 px panels, each under a 36 px label strip, and
+            # between one and four rows: most views carry only the clean panel
+            # and the overlay, so a short sheet is correct rather than truncated.
+            row_height = 1024 + 36
+            if width < 2000:
                 unreadable += 1
-                problems.append(f"sheet is unexpectedly small ({width}x{height}): {sheet.name}")
+                problems.append(f"sheet is too narrow ({width}x{height}): {sheet.name}")
+            elif height % row_height or not 1 <= height // row_height <= 4:
+                unreadable += 1
+                problems.append(
+                    f"sheet height {height} is not 1-4 panel rows: {sheet.name}"
+                )
         except Exception as exc:  # a sheet that will not open is a defect
             unreadable += 1
             problems.append(f"sheet will not open ({type(exc).__name__}): {sheet.name}")
