@@ -143,11 +143,20 @@ def validate_dataset(
                     site_id
                 )
     for identifier, owners in identifier_owners.items():
-        if len(owners) > 1:
+        # The registered rule is that no *split* may share a source tile,
+        # segment, water body, parcel, or footprint with another. Sharing inside
+        # one split is not leakage, and for continental products it is
+        # unavoidable: a single 10 m land-cover tile covers a whole UTM zone, so
+        # every site in a region necessarily owns it. Flagging any object held by
+        # two sites reported 3,937 errors on a sound cohort and said nothing
+        # about leakage.
+        owning_splits = {str(site_rows[owner]["split"]) for owner in owners if owner in site_rows}
+        if len(owning_splits) > 1:
             _issue(
                 issues,
                 "SHARED_SOURCE_OBJECT",
-                f"{identifier} is shared by independent sites {sorted(owners)}",
+                f"{identifier} is shared across splits {sorted(owning_splits)} "
+                f"by sites {sorted(owners)}",
             )
     minimum_separation = (
         project.dataset.minimum_site_separation_m if project is not None else 22000.0
