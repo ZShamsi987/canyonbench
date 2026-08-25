@@ -324,6 +324,9 @@ def build_dataset(
         calibration_source_sha256=calibration_source_sha256,
     )
     index_rows: list[dict[str, object]] = []
+    # Positives whose target is neither resolvable nor an extinction case.
+    # Collected across the whole run so one re-freeze can drop them all.
+    unresolvable_positives: list[dict[str, object]] = []
     gate_counts: Counter[str] = Counter()
 
     # The clean-view lattice is exactly sites x altitudes x geometries. For the
@@ -420,9 +423,23 @@ def build_dataset(
                     and not target_feature.resolvable
                     and not target_feature.extinction
                 ):
-                    raise DataValidationError(
-                        f"{site.site_id}/{identifier} is neither resolvable nor "
-                        "an empirically gated extinction view"
+                    # A positive whose target is neither resolvable nor an
+                    # extinction case is a labelling defect and the site has to
+                    # leave the cohort. Aborting here surfaces one offender per
+                    # build, and a build is hours, so collect them all instead:
+                    # the run finishes, the report lists every site to drop, and
+                    # one re-freeze fixes the cohort rather than N of them.
+                    unresolvable_positives.append(
+                        {
+                            "site_id": site.site_id,
+                            "view_id": identifier,
+                            "target_class": site.target_class,
+                            "median_width_px": target_feature.median_width_px,
+                            "local_contrast": target_feature.local_contrast,
+                            "interior_distance_px": target_feature.interior_distance_px,
+                            "occlusion_fraction": target_feature.occlusion_fraction,
+                            "component_count": target_feature.component_count,
+                        }
                     )
                 write_json(view_directory / "camera.json", camera.model_dump(mode="json"))
                 write_json(view_directory / "quality.json", clean_quality.model_dump(mode="json"))
@@ -537,6 +554,25 @@ def build_dataset(
             f"{config.clean_view_count}; the site cohort and the lattice disagree"
         )
     write_json(output / "index.json", index_rows)
+    if unresolvable_positives:
+        offenders = sorted({str(row["site_id"]) for row in unresolvable_positives})
+        write_json(
+            output / "unresolvable-positives.json",
+            {
+                "views": unresolvable_positives,
+                "sites_to_drop": offenders,
+                "note": (
+                    "Each is a positive site whose target is neither resolvable nor an "
+                    "empirically gated extinction view. Drop these site ids, re-freeze, "
+                    "and rebuild; the rest of this run is sound."
+                ),
+            },
+        )
+        print(
+            f"WARNING: {len(unresolvable_positives)} view(s) across {len(offenders)} site(s) "
+            f"are neither resolvable nor extinct; see {output / 'unresolvable-positives.json'}",
+            flush=True,
+        )
     write_json(
         output / "dataset_manifest.json",
         {
