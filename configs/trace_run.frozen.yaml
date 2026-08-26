@@ -129,8 +129,8 @@ protocol:
   - 10
   screening_views: 960
   causal_core_views: 160
-  prompt_cave_views: 120
-  robustness_views: 80
+  prompt_cave_views: 60
+  robustness_views: 40
   parse_retries: 3
   seed: 2026
   causal_operators:
