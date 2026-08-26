@@ -817,6 +817,17 @@ def trace_run(
         list[str] | None,
         typer.Option(help="Restrict this invocation to named roster models (repeatable)."),
     ] = None,
+    shard: Annotated[
+        str | None,
+        typer.Option(
+            help=(
+                "Run one slice of the work as INDEX/COUNT, e.g. 0/4, so several "
+                "processes can share a model. Views are partitioned whole, so a "
+                "view's tiers stay together; results are keyed by content hash, "
+                "so shards never duplicate a paid call."
+            )
+        ),
+    ] = None,
     dataset_dir: Annotated[
         Path | None, typer.Option(help="Override the dataset root for this host.")
     ] = None,
@@ -830,7 +841,16 @@ def trace_run(
     from canyonbench.trace.runner import run_trace
 
     loaded = load_run_config_for_host(config, dataset_dir=dataset_dir, output_dir=output_dir)
-    path = run_trace(loaded, only_models=only_model)
+    parsed_shard: tuple[int, int] | None = None
+    if shard is not None:
+        try:
+            index_text, count_text = shard.split("/", 1)
+            parsed_shard = (int(index_text), int(count_text))
+        except ValueError as exc:
+            raise typer.BadParameter("--shard must look like 0/4") from exc
+        if not 0 <= parsed_shard[0] < parsed_shard[1]:
+            raise typer.BadParameter("--shard index must be less than its count")
+    path = run_trace(loaded, only_models=only_model, shard=parsed_shard)
     typer.echo(f"Trace predictions: {path}")
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import zlib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -302,8 +303,18 @@ def run_trace(
     *,
     adapters: dict[str, Adapter] | None = None,
     only_models: list[str] | None = None,
+    shard: tuple[int, int] | None = None,
 ) -> Path:
     """Run all requested tiers; dynamic traces use each model's own Tier A cells.
+
+    ``shard`` splits the work as ``(index, count)`` so several processes can run
+    one model concurrently. At roughly nine seconds a call the metered roster is
+    a day of wall clock serially, and running one process per model still leaves
+    each model serial. Partitioning is by view, not by request: Tier B's
+    self-evidence sequences consume that view's own Tier A cells, so a view and
+    all of its tiers must stay inside one shard or the dependency breaks. The
+    hash is stable across processes and interpreter runs, and every result is
+    keyed by a content hash, so shards are disjoint and cannot double-charge.
 
     ``only_models`` restricts this invocation to part of the frozen roster. The
     Lambda driver serves one model at a time, so it traces one model per vLLM
@@ -391,6 +402,13 @@ def run_trace(
             },
         },
     )
+    def _in_shard(row: dict[str, Any]) -> bool:
+        if shard is None:
+            return True
+        index, count = shard
+        key = f"{row['site_id']}/{row['view_id']}".encode()
+        return zlib.crc32(key) % count == index
+
     tier_a = stratified_select(clean, config.protocol.screening_views, seed=config.protocol.seed)
     tier_b = stratified_select(
         clean, min(config.protocol.causal_core_views, len(clean)), seed=config.protocol.seed + 1
@@ -417,6 +435,14 @@ def run_trace(
         min(config.protocol.robustness_views, len(degraded)),
         seed=config.protocol.seed + 4,
     )
+    if shard is not None:
+        # Filter after selection so every shard sees the same stratified sample
+        # and the union across shards is exactly the unsharded run.
+        tier_a = [row for row in tier_a if _in_shard(row)]
+        tier_b = [row for row in tier_b if _in_shard(row)]
+        tier_c = [row for row in tier_c if _in_shard(row)]
+        robustness = [row for row in robustness if _in_shard(row)]
+        degraded_robustness = [row for row in degraded_robustness if _in_shard(row)]
     write_json(
         config.output_dir / "tier_membership.json",
         {
